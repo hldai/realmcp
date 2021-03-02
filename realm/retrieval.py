@@ -111,7 +111,7 @@ class BruteForceRetriever(Retriever):
       raise ValueError('Did not load the right number of embeddings.')
 
   @profile.profiled_function
-  def retrieve(self, query_batch):
+  def retrieve(self, query_batch, debug=False, tokenizer=None):
     # [batch_size, embed_dim]
     query_embeds = self._query_embedder.embed(query_batch)
 
@@ -119,6 +119,10 @@ class BruteForceRetriever(Retriever):
       # [batch_size, total_candidates]
       cand_scores = tf.matmul(query_embeds, self._doc_embeds, transpose_b=True)
       _, top_ids_batch = tf.math.top_k(cand_scores, k=self._num_neighbors)
+
+    if debug:
+      # print(self._documents[top_ids_batch[0][0]].body_token_ids)
+      print(tokenizer.token_ids_to_str(self._documents[top_ids_batch[0][0]].body_token_ids))
 
     retrievals_batch = []
     for top_ids in top_ids_batch:

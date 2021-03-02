@@ -143,11 +143,21 @@ def generate_queries(featurizer):
 def generate_queries_and_candidates(featurizer, retriever):
   """Returns a generator over (Query, List[Document]) pairs."""
   queries = generate_queries(featurizer)
+  print('DDDDDDDDDDDDD generate_queries_and_candidates!!')
 
+  flg = True
   for query_batch in batch(queries, FLAGS.retrieval_batch_size):
     # candidates_batch has shape [batch_size, num_candidates]
     # Each element is a Document.
-    candidates_batch = retriever.retrieve(query_batch)
+    candidates_batch = retriever.retrieve(query_batch, flg, featurizer.tokenizer)
+
+    if flg:
+      q = query_batch[0]
+      print('QUERY:')
+      print(' '.join([token.text for token in q.tokens]))
+      print('******************************************')
+    else:
+      flg = False
 
     for query, cands in zip(query_batch, candidates_batch):
       # If the retrieval index contains duplicate docs, we may end up retrieving
