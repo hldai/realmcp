@@ -21,7 +21,7 @@ from __future__ import print_function
 import os
 import re
 
-from language.common.utils import file_utils
+from common.utils import file_utils
 import six
 import tensorflow.compat.v1 as tf
 import tensorflow_hub as hub
