@@ -504,7 +504,6 @@ def get_predictor(model_dir):
   with tf.io.gfile.GFile(os.path.join(model_dir, "params.json")) as f:
     params = json.load(f)
 
-
   best_checkpoint_pattern = os.path.join(model_dir, "export", "best_default",
                                          "checkpoint", "*.index")
   best_checkpoint = tf.io.gfile.glob(

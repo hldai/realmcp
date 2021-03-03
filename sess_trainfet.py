@@ -43,4 +43,4 @@ from exp import sessfetexp
 # # Evaluate the tensor `c`.
 # print(sess.run(concat_token_emb))  # prints 30.0
 
-sessfetexp.train_fet_sess()
+# sessfetexp.train_fet_sess()
