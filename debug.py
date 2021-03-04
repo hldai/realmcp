@@ -124,20 +124,76 @@ def scann_test():
 
 
 # scann_test()
+# import logging
+# import tensorflow_hub as hub
 import tensorflow as tf
-embedder_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/embedder'
-checkpoint_path = os.path.join(embedder_module_path, "encoded", "encoded.ckpt")
+# import numpy as np
+# tf.logging.set_verbosity(tf.logging.INFO)
+# tf.logging.info('This is a log')
+
+# tf.enable_eager_execution()
+
+# N = 100
+# # dictionary of arrays:
+# metadata = {'m1': np.zeros(shape=(N,2)), 'm2': np.ones(shape=(N,3,5))}
+# num_samples = N
+#
+# def meta_dict_gen():
+#     for i in range(num_samples):
+#         ls = {}
+#         label = 0
+#         for key, val in metadata.items():
+#             ls[key] = val[i]
+#         yield ls, label
+#
+# dataset = tf.data.Dataset.from_generator(
+#     meta_dict_gen,
+#     output_types=({k: tf.float32 for k in metadata}, tf.int32))
+# # iter = dataset.make_one_shot_iterator()
+# # next_elem = iter.get_next()
+# # print(next_elem)
+# for i, batch in enumerate(dataset.batch(1)):
+#     # print(batch)
+#     print(batch)
+
+import scann
+import numpy as np
+import time
+
+data_dir = '/data/hldai/data'
+retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
+var_name = "block_emb"
 with tf.device("/cpu:0"):
-    np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor('block_emb')
+    question_emb_np = np.random.uniform(-1, 1, (4, 128))
+    question_emb = tf.constant(question_emb_np, tf.float32)
+    checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
+    np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
     print(np_db.shape)
-# blocks_dataset = tf.data.TFRecordDataset(
-#     '/data/hldai/data/realm_data/blocks.tfr', buffer_size=512 * 1024 * 1024)
-# cnt = 0
-# for i, x in enumerate(blocks_dataset):
-#     # print(x)
-#     # if i > 1:
-#     #     break
-#     cnt += 1
-#     if cnt % 100000 == 0:
-#         print(cnt)
-# print(cnt)
+    retriever_beam_size = 5
+
+    tf_db_vals = list()
+    n_samples = np_db.shape[0]
+    n_part = 5
+    part_size = n_samples // n_part
+    pbeg = 0
+    for i in range(n_part):
+        if i == n_part - 1:
+            pend = n_samples
+        else:
+            pend = pbeg + part_size
+        # print(pbeg, pend)
+        tf_db_vals.append(tf.constant(np_db[pbeg:pend]))
+        pbeg = pend
+    # block_emb = tf.constant(np_db)
+    block_emb = tf.concat(tf_db_vals, axis=0)
+
+    # block_emb = tf.constant(np_db)
+
+    searcher = scann.scann_ops.builder(block_emb, retriever_beam_size, "dot_product").tree(
+        num_leaves=1000, num_leaves_to_search=100, training_sample_size=250000).score_ah(
+        2, anisotropic_quantization_threshold=0.2).reorder(100).build()
+
+    t = time.time()
+    retrieved_block_ids, _ = searcher.search_batched(question_emb)
+    print(retrieved_block_ids)
+    print(time.time() - t)

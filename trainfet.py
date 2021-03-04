@@ -1,7 +1,7 @@
 import os
 import logging
-import tensorflow as tf
 import tensorflow_hub as hub
+import tensorflow as tf
 from bert import tokenization
 from locbert import optimization
 # from orqa.utils import bert_utils
@@ -111,12 +111,13 @@ def init_universal_logging(logfile='main.log', mode='a', to_stdout=True):
 
 
 def main(_):
-    init_universal_logging(None)
+    # init_universal_logging(None)
     fetexp.train_fet()
 
 
 if __name__ == "__main__":
     # tf.disable_v2_behavior()
     # app.run(main)
-    init_universal_logging(None)
+    # init_universal_logging(None)
+    # tf.get_logger().setLevel('INFO')
     fetexp.train_fet()
