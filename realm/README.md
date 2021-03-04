@@ -110,7 +110,7 @@ expected from this setup (the dataset is far too small).
     conda create --name realm python=3.7 tensorflow=1.15
     conda activate realm
     # We use TensorFlow Hub to download BERT, which is used to initialize REALM.
-    pip install tensorflow-hub bert-tensorflow
+    pip install tensorflow-hub locbert-tensorflow
     ```
 
 2. **Make sure the "language" package is in PYTHONPATH.** Either run the code while at the root of this repository, or set the following environment variable:
@@ -196,5 +196,5 @@ To fine-tune the ORQA model with REALM pre-training, set the flags for
 
 ```sh
 --retriever_module_path=gs://realm-data/cc_news_pretrained/embedder
---reader_module_path=gs://realm-data/cc_news_pretrained/bert
+--reader_module_path=gs://realm-data/cc_news_pretrained/locbert
 ```

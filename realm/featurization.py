@@ -18,7 +18,7 @@ import collections
 import functools
 import hashlib
 
-from bert import tokenization
+from locbert import tokenization
 from common.utils import nest_utils
 from realm import profile
 import tensorflow.compat.v1 as tf

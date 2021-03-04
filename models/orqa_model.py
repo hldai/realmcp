@@ -18,7 +18,7 @@ import collections
 import json
 import os
 
-from bert import optimization
+from locbert import optimization
 from common.utils import exporters
 from common.utils import tensor_utils
 from language.orqa import ops as orqa_ops

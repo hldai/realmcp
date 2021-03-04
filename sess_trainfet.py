@@ -1,12 +1,12 @@
 import os
 import tensorflow as tf
 import tensorflow_hub as hub
-from bert import tokenization, optimization
+from locbert import tokenization, optimization
 from exp import sessfetexp
 
 
 # # run_train()
-# reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
+# reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/locbert'
 # vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
 #
 # # tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)

@@ -2,9 +2,12 @@ import os
 import logging
 import tensorflow as tf
 import tensorflow_hub as hub
-from bert import tokenization, optimization
+from bert import tokenization
+from locbert import optimization
 # from orqa.utils import bert_utils
 from exp import fetexp
+from absl import app
+from absl import flags
 
 
 def train_input_fn():
@@ -12,7 +15,7 @@ def train_input_fn():
 
 
 def model_fn(features, labels, mode, params):
-    reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
+    reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/locbert'
 
     train_op = None
     loss = tf.constant(337)
@@ -107,5 +110,13 @@ def init_universal_logging(logfile='main.log', mode='a', to_stdout=True):
                         datefmt='%y-%m-%d %H:%M:%S', handlers=handlers, level=logging.INFO)
 
 
-init_universal_logging(None)
-fetexp.train_fet()
+def main(_):
+    init_universal_logging(None)
+    fetexp.train_fet()
+
+
+if __name__ == "__main__":
+    # tf.disable_v2_behavior()
+    # app.run(main)
+    init_universal_logging(None)
+    fetexp.train_fet()

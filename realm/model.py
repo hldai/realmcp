@@ -18,7 +18,7 @@ r"""Implementation of the Retrieval Augmented Masked Language Model."""
 import collections
 
 
-from bert import optimization
+from locbert import optimization
 from common.utils import exporters
 from common.utils import nest_utils
 from common.utils import tensor_utils
@@ -54,10 +54,10 @@ def model_fn(features, labels, mode, params):
   # ==============================
   bert_module = hub.Module(
       spec=params["bert_hub_module_handle"],
-      name="bert",
+      name="locbert",
       tags={"train"} if mode == tf.estimator.ModeKeys.TRAIN else {},
       trainable=True)
-  hub.register_module_for_export(bert_module, "bert")
+  hub.register_module_for_export(bert_module, "locbert")
 
   embedder_module = hub.Module(
       spec=params["embedder_hub_module_handle"],

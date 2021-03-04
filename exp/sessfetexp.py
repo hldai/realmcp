@@ -2,7 +2,7 @@ import os
 import collections
 import tensorflow as tf
 import tensorflow_hub as hub
-from bert import tokenization, optimization
+from locbert import tokenization, optimization
 from orqa.utils import scann_utils
 
 
@@ -64,7 +64,7 @@ def train_fet_sess():
     # run_train()
     retriever_beam_size = 5
     embedder_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/embedder'
-    reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
+    reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/locbert'
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
 
     # tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)

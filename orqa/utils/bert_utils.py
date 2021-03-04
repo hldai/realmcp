@@ -14,7 +14,7 @@
 # limitations under the License.
 # Lint as: python3
 """BERT utils."""
-from bert import tokenization
+from locbert import tokenization
 import tensorflow.compat.v1 as tf
 import tensorflow_hub as hub
 import tensorflow_text as tf_text

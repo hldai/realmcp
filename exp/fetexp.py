@@ -1,8 +1,10 @@
 import os
+import logging
 import collections
 import tensorflow as tf
 import tensorflow_hub as hub
-from bert import tokenization, optimization
+# from bert import tokenization
+from locbert import tokenization, optimization
 from orqa.utils import scann_utils
 
 
@@ -63,7 +65,7 @@ def retrieve(query_token_id_seqs, embedder_path, mode, retriever_beam_size):
 
 def model_fn(features, labels, mode, params):
     embedder_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/embedder'
-    reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
+    reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/locbert'
     retriever_beam_size = 5
     lr = 1e-5
     num_train_steps = 10
@@ -76,7 +78,7 @@ def model_fn(features, labels, mode, params):
     loss = tf.reduce_mean(retriever_outputs)
     eval_metric_ops = None
 
-    logging_hook = tf.train.LoggingTensorHook({"pred": predictions}, every_n_iter=5)
+    logging_hook = tf.estimator.LoggingTensorHook({"pred": predictions}, every_n_iter=5)
 
     train_op = optimization.create_optimizer(
         loss=loss,
@@ -114,19 +116,19 @@ def train_fet():
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
     params = {'batch_size': 4}
 
-    var_name = "block_emb"
-    checkpoint_path = os.path.join(embedder_module_path, "encoded", "encoded.ckpt")
-    with tf.device("/cpu:13"):
-        np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
-        init_db = tf.py_func(lambda: np_db, [], tf.float32)
-        init_db.set_shape(np_db.shape)
-        tf_db = tf.get_local_variable(var_name, initializer=init_db)
-    print(type(tf_db))
-    print(type(np_db))
-    # print(tf.size(np_db))
-    print(np_db.shape)
-    print(tf.shape(tf_db))
-    exit()
+    # var_name = "block_emb"
+    # checkpoint_path = os.path.join(embedder_module_path, "encoded", "encoded.ckpt")
+    # with tf.device("/cpu:13"):
+    #     np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
+    #     init_db = tf.py_func(lambda: np_db, [], tf.float32)
+    #     init_db.set_shape(np_db.shape)
+    #     tf_db = tf.get_local_variable(var_name, initializer=init_db)
+    # print(type(tf_db))
+    # print(type(np_db))
+    # # print(tf.size(np_db))
+    # print(np_db.shape)
+    # print(tf.shape(tf_db))
+    # exit()
 
     # tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
     tokenizer = tokenization.FullTokenizer(vocab_file, do_lower_case=True)
@@ -160,7 +162,8 @@ def train_fet():
         # throttle_secs=FLAGS.eval_throttle_secs
         )
 
-    # estimator.evaluate(input_fn)
+    logging.info('DDDDDDDDDDDDDDDDDDDDD START')
+    estimator.evaluate(input_fn)
     # tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
     # # mode = tf.estimator.ModeKeys.TRAIN

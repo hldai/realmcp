@@ -137,7 +137,7 @@ def main(_):
 
     if step_count >= FLAGS.start_at_step:
       # Move the newly exported model to a staging area.
-      # Move the entire export directory so that both the "bert" encoder and the
+      # Move the entire export directory so that both the "locbert" encoder and the
       # query / document "embedder" get moved around together.
       staging_export_path = current_export_path.replace("tf_hub", "temp")
 
