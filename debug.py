@@ -160,40 +160,66 @@ import scann
 import numpy as np
 import time
 
+def scann_test():
+    data_dir = '/data/hldai/data'
+    retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
+    var_name = "block_emb"
+    with tf.device("/cpu:0"):
+        question_emb_np = np.random.uniform(-1, 1, (4, 128))
+        question_emb = tf.constant(question_emb_np, tf.float32)
+        checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
+        np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
+        print(np_db.shape)
+        retriever_beam_size = 5
+
+        # block_emb = tf.constant(np_db)
+        block_emb = tf.compat.v1.get_variable('block_emb_tf', initializer=np_db)
+
+        searcher = scann.scann_ops.builder(block_emb, retriever_beam_size, "dot_product").tree(
+            num_leaves=1000, num_leaves_to_search=100, training_sample_size=250000).score_ah(
+            2, anisotropic_quantization_threshold=0.2).reorder(100).build()
+
+        t = time.time()
+        retrieved_block_ids, _ = searcher.search_batched(question_emb)
+        print(retrieved_block_ids)
+        print(time.time() - t)
+
+# scann_test()
+
+from orqa.utils import bert_utils
+
 data_dir = '/data/hldai/data'
+block_records_path = os.path.join(data_dir, 'realm_data/blocks.tfr')
 retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
-var_name = "block_emb"
-with tf.device("/cpu:0"):
-    question_emb_np = np.random.uniform(-1, 1, (4, 128))
-    question_emb = tf.constant(question_emb_np, tf.float32)
-    checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
-    np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
-    print(np_db.shape)
-    retriever_beam_size = 5
+reader_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/bert')
+num_block_records = 13353718
 
-    tf_db_vals = list()
-    n_samples = np_db.shape[0]
-    n_part = 5
-    part_size = n_samples // n_part
-    pbeg = 0
-    for i in range(n_part):
-        if i == n_part - 1:
-            pend = n_samples
-        else:
-            pend = pbeg + part_size
-        # print(pbeg, pend)
-        tf_db_vals.append(tf.constant(np_db[pbeg:pend]))
-        pbeg = pend
-    # block_emb = tf.constant(np_db)
-    block_emb = tf.concat(tf_db_vals, axis=0)
+# block_ids = [[8922907, 6052548, 10062955, 3353143, 1761062],
+#              [4329926, 2385692, 3212458, 4258115, 4555483]]
+#              [6885852, 11160934, 3541819, 11471241, 6999494],
+#              [8884514, 4336603, 12356131, 5319352, 2385659]]
+block_ids = [8922907, 6052548, 10062955, 3353143, 1761062]
 
-    # block_emb = tf.constant(np_db)
+block_ids = tf.compat.v1.get_variable('block_ids', initializer=block_ids)
+# print(block_ids)
 
-    searcher = scann.scann_ops.builder(block_emb, retriever_beam_size, "dot_product").tree(
-        num_leaves=1000, num_leaves_to_search=100, training_sample_size=250000).score_ah(
-        2, anisotropic_quantization_threshold=0.2).reorder(100).build()
+blocks_dataset = tf.data.TFRecordDataset(
+    block_records_path, buffer_size=512 * 1024 * 1024)
+blocks_dataset = blocks_dataset.batch(
+    num_block_records, drop_remainder=True)
+blocks = tf.compat.v1.get_variable(
+    "blocks",
+    initializer=tf.data.experimental.get_single_element(blocks_dataset))
+# blocks = tf.get_variable(
+#     "blocks",
+#     initializer=tf.data.experimental.get_single_element(blocks_dataset))
+# blocks = tf.constant(tf.data.experimental.get_single_element(blocks_dataset))
+retrieved_blocks = tf.gather(blocks, block_ids)
+# print(retrieved_blocks)
 
-    t = time.time()
-    retrieved_block_ids, _ = searcher.search_batched(question_emb)
-    print(retrieved_block_ids)
-    print(time.time() - t)
+tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
+print('get tokenizer')
+
+(orig_tokens, block_token_map, block_token_ids, blocks) = (
+    bert_utils.tokenize_with_original_mapping(blocks, tokenizer))
+print(block_token_ids)

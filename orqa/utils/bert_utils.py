@@ -60,13 +60,20 @@ def get_tf_tokenizer(module_handle):
 def tokenize_with_original_mapping(text_input, tokenizer):
   """Tokenize with original mapping."""
   # pylint:disable=protected-access
+  print('FODSOKDJFKS1')
   text_input = tf.regex_replace(text_input, r"\p{Cc}|\p{Cf}", " ")
-  orig_tokens = tf_text.regex_split(
-      text_input, bert_tokenizer._DELIM_REGEX_PATTERN,
-      tokenizer._basic_tokenizer._keep_delim_regex_pattern,
-      "BertBasicTokenizer")
+  print('FODSOKDJFKS2')
+  # orig_tokens = tf_text.regex_split(
+  #     text_input, bert_tokenizer._DELIM_REGEX_PATTERN,
+  #     tokenizer._basic_tokenizer._keep_delim_regex_pattern,
+  #     "BertBasicTokenizer")
+  orig_tokens = text_input
+  print('FODSOKDJFKS')
   normalized_tokens = orig_tokens
   normalized_text = text_input
+  print(normalized_tokens)
+  print(normalized_text)
+  print('llllllllllllllllllllll')
   if tokenizer._basic_tokenizer._lower_case:
 
     def _do_lower_case(t):
@@ -78,7 +85,10 @@ def tokenize_with_original_mapping(text_input, tokenizer):
     normalized_tokens = _do_lower_case(normalized_tokens)
     normalized_text = _do_lower_case(normalized_text)
 
+  print(normalized_tokens)
+  print(normalized_text)
   wordpieces = tokenizer._wordpiece_tokenizer.tokenize(normalized_tokens)
+  print(wordpieces)
 
   orig_token_map = tf.ragged.range(orig_tokens.row_lengths())
   orig_token_map = tf.expand_dims(orig_token_map, 2) + tf.zeros_like(wordpieces)

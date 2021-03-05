@@ -43,24 +43,16 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     #     checkpoint_path=os.path.join(embedder_path, "encoded", "encoded.ckpt"),
     #     num_neighbors=retriever_beam_size)
     np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
-
-    tf_db_vals = list()
-    n_samples = np_db.shape[0]
-    n_part = 5
-    part_size = n_samples // n_part
-    pbeg = 0
-    for i in range(n_part):
-        if i == n_part - 1:
-            pend = n_samples
-        else:
-            pend = pbeg + part_size
-        # print(pbeg, pend)
-        tf_db_vals.append(tf.constant(np_db[pbeg:pend]))
-        pbeg = pend
-    block_emb = tf.concat(tf_db_vals, axis=0)
-    # block_emb = tf.constant(np_db[:part_size])
+    n_docs = np_db.shape[0]
+    # np_db = np_db[:n_docs // 2]
 
     # block_emb = tf.constant(np_db)
+    block_emb = tf.compat.v1.get_variable('block_emb_tf', shape=np_db.shape)
+
+    def init_fn(scaffold, sess):
+        sess.run(block_emb.initializer, {block_emb.initial_value: np_db})
+
+    scaffold = tf.compat.v1.train.Scaffold(init_fn=init_fn)
 
     searcher = scann.scann_ops.builder(block_emb, retriever_beam_size, "dot_product").tree(
         num_leaves=1000, num_leaves_to_search=100, training_sample_size=250000).score_ah(
@@ -69,21 +61,21 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     # [1, retriever_beam_size]
     retrieved_block_ids, _ = searcher.search_batched(question_emb)
 
-    # # [1, retriever_beam_size, projection_size]
-    # retrieved_block_emb = tf.gather(block_emb, retrieved_block_ids)
-    #
-    # # [retriever_beam_size]
-    # retrieved_block_ids = tf.squeeze(retrieved_block_ids)
-    #
+    # [1, retriever_beam_size, projection_size]
+    retrieved_block_emb = tf.gather(block_emb, retrieved_block_ids)
+
+    # [retriever_beam_size]
+    retrieved_block_ids = tf.squeeze(retrieved_block_ids)
+
     # # [retriever_beam_size, projection_size]
     # retrieved_block_emb = tf.squeeze(retrieved_block_emb)
     #
     # # [1, retriever_beam_size]
     # retrieved_logits = tf.matmul(question_emb, retrieved_block_emb, transpose_b=True)
-
+    #
     # # [retriever_beam_size]
     # retrieved_logits = tf.squeeze(retrieved_logits, 0)
-    #
+
     # blocks_dataset = tf.data.TFRecordDataset(
     #     block_records_path, buffer_size=512 * 1024 * 1024)
     # blocks_dataset = blocks_dataset.batch(
@@ -97,7 +89,7 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     # # blocks = tf.constant(tf.data.experimental.get_single_element(blocks_dataset))
     # retrieved_blocks = tf.gather(blocks, retrieved_block_ids)
     # return RetrieverOutputs(logits=retrieved_logits, blocks=retrieved_blocks)
-    return retrieved_block_ids, question_emb
+    return retrieved_block_ids, retrieved_block_emb, scaffold
 
 
 def model_fn(features, labels, mode, params):
@@ -112,7 +104,7 @@ def model_fn(features, labels, mode, params):
     input_mask = features['input_mask']
     with tf.device("/cpu:0"):
         # retriever_outputs = retrieve(tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
-        retrieved_block_ids, question_emb = retrieve(
+        retrieved_block_ids, question_emb, scaffold = retrieve(
             tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
 
     predictions = question_emb
@@ -120,11 +112,11 @@ def model_fn(features, labels, mode, params):
     loss = tf.reduce_mean(predictions)
     eval_metric_ops = None
 
-    texts = tf.constant(['foo', 'gar', 'toest', 'foefj', 'jjj', 'sdjf', 'f', 'g', 'g', 'h', 'p'])
     # logging_hook = tf.estimator.LoggingTensorHook({"pred": predictions, 'feat': features}, every_n_iter=1)
-    logging_hook = tf.estimator.LoggingTensorHook(
-        {"pred": predictions, 'labels': labels, 'feat': features['tok_id_seq_batch'],
-         'ids': retrieved_block_ids}, every_n_iter=1)
+    # logging_hook = tf.estimator.LoggingTensorHook(
+    #     {"pred": predictions, 'labels': labels, 'feat': features['tok_id_seq_batch'],
+    #      'ids': retrieved_block_ids}, every_n_iter=1)
+    logging_hook = tf.estimator.LoggingTensorHook({'ids': retrieved_block_ids, 'pred': predictions}, every_n_iter=1)
 
     train_op = optimization.create_optimizer(
         loss=loss,
@@ -141,7 +133,8 @@ def model_fn(features, labels, mode, params):
         predictions=predictions,
         # training_hooks=[logging_hook],
         evaluation_hooks=[logging_hook],
-        eval_metric_ops=eval_metric_ops)
+        eval_metric_ops=eval_metric_ops,
+        scaffold=scaffold)
 
 
 def get_paded_bert_input(tok_id_seqs):
