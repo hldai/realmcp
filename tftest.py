@@ -1,5 +1,6 @@
 from locbert import optimization
 import tensorflow as tf
+import numpy as np
 import random
 
 
@@ -17,14 +18,22 @@ def get_ragged_vals(max_n_vals):
 
 def input_fn():
     def data_gen():
+        lens = [3, 1, 5, 2, 5, 3, 4, 2]
         # print(all_vals)
-        all_vals = get_ragged_vals(5)
-        yield all_vals, -1
+        # all_vals = get_ragged_vals(5)
+        for length in lens:
+            vals = list()
+            for _ in range(length):
+                vals.append(random.uniform(-1, 1))
+            yield tf.ragged.constant(vals), -1
 
     dataset = tf.data.Dataset.from_generator(
         data_gen,
         output_types=(tf.float32, tf.int32))
 
+    # batched_non_ragged_dataset = dataset.apply(
+    #     tf.data.experimental.dense_to_ragged_batch(2))
+    # return batched_non_ragged_dataset
     return dataset
 
 
@@ -98,11 +107,63 @@ def train():
 
 
 # train()
-k = 5
-vals = get_ragged_vals(k)
-vals_ragged = tf.ragged.constant(vals)
-print(vals_ragged)
-print(tf.gather(vals_ragged, [2, 3]))
+
+# digits = tf.ragged.constant([[3, 1, 4, 1], [], [5, 9, 2], [6], []])
+# vals = tf.ragged.constant([[2, 3], [1], [], [1, 4, 9], [0]])
+
+# print(tf.concat((digits, vals), axis=1))
+
+ragged_vals = list()
+lens = [3, 1, 5, 2, 5, 3, 4, 2]
+# print(all_vals)
+# all_vals = get_ragged_vals(5)
+for length in lens:
+    vals = list()
+    for _ in range(length):
+        vals.append(random.uniform(-1, 1))
+    ragged_vals.append(vals)
+
+
+def data_gen():
+    for vals in ragged_vals:
+        yield tf.ragged.constant([vals])
+
+# dataset = tf.data.Dataset.from_generator(
+#     data_gen,
+#     output_signature=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.float32))
+
+# dataset = dataset.apply(
+#     tf.data.experimental.dense_to_ragged_batch(2))
+# for v in dataset.batch(4):
+#     print(v)
+#     # print(v[1].to_tensor())
+#     vt = v[1].to_tensor()
+#     print(vt)
+#     print(tf.squeeze(vt))
+# for v in dataset:
+#     print(v)
+
+# tf.data.experimental.save(dataset, '/data/hldai/data/tmp/tmp.tfdata', shard_func=lambda x: np.int64(0))
+# print('******************* save ************************')
+
+dataset = tf.data.experimental.load(
+    '/data/hldai/data/tmp/tmp.tfdata',
+    element_spec=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.float32))
+dataset = dataset.batch(8)
+all_docs = tf.data.experimental.get_single_element(dataset)
+print(all_docs)
+# for v in dataset:
+#     print(v)
+
+# non_ragged_dataset = tf.data.Dataset.from_tensor_slices([1, 5, 3, 2, 8])
+# non_ragged_dataset = non_ragged_dataset.map(tf.range)
+# for v in non_ragged_dataset:
+#     print(v)
+# batched_non_ragged_dataset = non_ragged_dataset.apply(
+#     tf.data.experimental.dense_to_ragged_batch(2))
+# for element in batched_non_ragged_dataset:
+#     print(element)
+
 # vals_tensor = vals_ragged.to_tensor()
 # weights = tf.Variable(tf.random_normal_initializer()(shape=[k, k], dtype=tf.float32))
 # z = tf.matmul(vals_tensor, weights)
