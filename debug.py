@@ -223,4 +223,3 @@ def scann_test():
 # (orig_tokens, block_token_map, block_token_ids, blocks) = (
 #     bert_utils.tokenize_with_original_mapping(blocks, tokenizer))
 # print(block_token_ids)
-

@@ -1,10 +1,14 @@
 import os
 import tensorflow as tf
+import numpy as np
 from locbert import tokenization
 import config
+from utils import datautils
 
 
 def doc_texts_to_token_ids():
+    max_seq_len = 128
+    output_file = os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs.pkl')
     tfr_text_docs_file = os.path.join(config.DATA_DIR, 'realm_data/blocks.tfr')
     reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
@@ -12,17 +16,28 @@ def doc_texts_to_token_ids():
 
     blocks_dataset = tf.data.TFRecordDataset(tfr_text_docs_file, buffer_size=512 * 1024 * 1024)
 
+    tok_id_seqs = list()
     for i, v in enumerate(blocks_dataset):
         # print(v)
         v = v.numpy()
         v = v.decode('utf-8')
         tokens = tokenizer.tokenize(v)
-        print(len(tokens))
-        if i > 1:
-            break
+        # print(tokens)
+        # print(len(tokens))
+        token_ids = np.array(tokenizer.convert_tokens_to_ids(tokens), dtype=np.int32)
+        # print(type(token_ids))
+        if len(token_ids) > max_seq_len:
+            token_ids = token_ids[:max_seq_len]
+        tok_id_seqs.append(token_ids)
+        # if i > 3:
+        #     break
+        if i % 10000 == 0:
+            print(i)
+
+    datautils.save_pickle_data(tok_id_seqs, output_file)
 
 
-# doc_texts_to_token_ids()
+doc_texts_to_token_ids()
 
 # import numpy as np
 # example_path = '/data/hldai/data/tmp/tmp.tfr'
@@ -44,5 +59,4 @@ def doc_texts_to_token_ids():
 # # for v in dataset:
 # #     print(v)
 
-data_path = 'd:/data/tmp/tmp.tfdata'
-
+# data_path = 'd:/data/tmp/tmp.tfdata'

@@ -1,7 +1,10 @@
+import os
 from locbert import optimization
 import tensorflow as tf
 import numpy as np
 import random
+from utils import datautils
+import config
 
 global_vals = tf.constant(np.random.uniform(-5, -4, (3, 5)), tf.float32)
 
@@ -69,11 +72,17 @@ def model_fn(features, labels, mode, params):
     loss = tf.reduce_mean(z)
     eval_metric_ops = None
 
+    with tf.device("/cpu:0"):
+        blocks_np = datautils.load_pickle_data(os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs.pkl'))
+        blocks = tf.ragged.constant(blocks_np)
+        # blocks = tf.ragged.constant([[3, 4], [1], [2, 3, 7], [4]], dtype=tf.int32, ragged_rank=1)
+        retrieved_block_ids = tf.constant([0, 2])
+        retrieved_blocks = tf.gather(blocks, retrieved_block_ids).to_tensor()
     # logging_hook = tf.estimator.LoggingTensorHook({"pred": predictions, 'feat': features}, every_n_iter=1)
     # logging_hook = tf.estimator.LoggingTensorHook(
     #     {"pred": predictions, 'labels': labels, 'feat': features['tok_id_seq_batch'],
     #      'ids': retrieved_block_ids}, every_n_iter=1)
-    logging_hook = tf.estimator.LoggingTensorHook({'z': z, 'feat': features}, every_n_iter=1)
+    logging_hook = tf.estimator.LoggingTensorHook({'z': z, 'feat': features, 'b': retrieved_blocks}, every_n_iter=1)
 
     train_op = optimization.create_optimizer(
         loss=loss,

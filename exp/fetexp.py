@@ -17,17 +17,17 @@ retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/em
 var_name = "block_emb"
 checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
 np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
-blocks_list = list()
-
-
-def load_block_records():
-    print('LOADING blocks')
-    rand_lens = np.random.randint(5, 20, num_block_records)
-    for i, rand_len in enumerate(rand_lens):
-        vals = np.random.randint(0, 5000, rand_len)
-        blocks_list.append(vals)
-        if i % 1000000 == 0:
-            print(i)
+# blocks_list = list()
+#
+#
+# def load_block_records():
+#     print('LOADING blocks')
+#     rand_lens = np.random.randint(5, 20, num_block_records)
+#     for i, rand_len in enumerate(rand_lens):
+#         vals = np.random.randint(0, 5000, rand_len)
+#         blocks_list.append(vals)
+#         if i % 1000000 == 0:
+#             print(i)
 
 
 def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_beam_size):
@@ -83,7 +83,8 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     retrieved_block_emb = tf.gather(block_emb, retrieved_block_ids)
 
     # [retriever_beam_size]
-    retrieved_block_ids = tf.squeeze(retrieved_block_ids)
+    # retrieved_block_ids = tf.squeeze(retrieved_block_ids)
+    retrieved_block_ids = tf.reshape(retrieved_block_ids, shape=(-1, 5))
     print('RERERERERERERERERE_BLOCKIDS')
 
     # # [retriever_beam_size, projection_size]
@@ -107,8 +108,16 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     # #     initializer=tf.data.experimental.get_single_element(blocks_dataset))
     # # blocks = tf.constant(tf.data.experimental.get_single_element(blocks_dataset))
 
-    blocks = tf.ragged.constant(blocks_list, dtype=tf.int32, ragged_rank=1)
-    retrieved_blocks = tf.gather(blocks, retrieved_block_ids)
+    blocks_list = list()
+    rand_lens = np.random.randint(5, 20, num_block_records)
+    for i, rand_len in enumerate(rand_lens):
+        vals = np.random.randint(0, 5000, rand_len)
+        blocks_list.append(vals)
+        if i % 1000000 == 0:
+            print(i)
+
+    blocks = tf.ragged.constant(blocks_list, dtype=tf.int32)
+    retrieved_blocks = tf.gather(blocks, retrieved_block_ids).to_tensor()
     # return RetrieverOutputs(logits=retrieved_logits, blocks=retrieved_blocks)
     return retrieved_block_ids, retrieved_block_emb, retrieved_blocks, scaffold
 
@@ -139,7 +148,7 @@ def model_fn(features, labels, mode, params):
     #     {"pred": predictions, 'labels': labels, 'feat': features['tok_id_seq_batch'],
     #      'ids': retrieved_block_ids}, every_n_iter=1)
     logging_hook = tf.estimator.LoggingTensorHook(
-        {'ids': retrieved_block_ids, 'pred': predictions, 'blocks': retrieved_blocks}, every_n_iter=1)
+        {'ids': retrieved_block_ids, 'pred': predictions, 'rb': retrieved_blocks}, every_n_iter=1)
 
     train_op = optimization.create_optimizer(
         loss=loss,
@@ -288,7 +297,7 @@ def train_fet():
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
     params = {'batch_size': 4}
 
-    load_block_records()
+    # load_block_records()
 
     # var_name = "block_emb"
     # checkpoint_path = os.path.join(embedder_module_path, "encoded", "encoded.ckpt")
