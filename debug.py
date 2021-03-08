@@ -156,7 +156,7 @@ import tensorflow as tf
 #     # print(batch)
 #     print(batch)
 
-import scann
+# import scann
 import numpy as np
 import time
 
@@ -185,41 +185,42 @@ def scann_test():
         print(time.time() - t)
 
 # scann_test()
-
-from orqa.utils import bert_utils
-
-data_dir = '/data/hldai/data'
-block_records_path = os.path.join(data_dir, 'realm_data/blocks.tfr')
-retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
-reader_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/bert')
-num_block_records = 13353718
-
-# block_ids = [[8922907, 6052548, 10062955, 3353143, 1761062],
-#              [4329926, 2385692, 3212458, 4258115, 4555483]]
-#              [6885852, 11160934, 3541819, 11471241, 6999494],
-#              [8884514, 4336603, 12356131, 5319352, 2385659]]
-block_ids = [8922907, 6052548, 10062955, 3353143, 1761062]
-
-block_ids = tf.compat.v1.get_variable('block_ids', initializer=block_ids)
-# print(block_ids)
-
-blocks_dataset = tf.data.TFRecordDataset(
-    block_records_path, buffer_size=512 * 1024 * 1024)
-blocks_dataset = blocks_dataset.batch(
-    num_block_records, drop_remainder=True)
-blocks = tf.compat.v1.get_variable(
-    "blocks",
-    initializer=tf.data.experimental.get_single_element(blocks_dataset))
-# blocks = tf.get_variable(
+#
+# from orqa.utils import bert_utils
+#
+# data_dir = '/data/hldai/data'
+# block_records_path = os.path.join(data_dir, 'realm_data/blocks.tfr')
+# retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
+# reader_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/bert')
+# num_block_records = 13353718
+#
+# # block_ids = [[8922907, 6052548, 10062955, 3353143, 1761062],
+# #              [4329926, 2385692, 3212458, 4258115, 4555483]]
+# #              [6885852, 11160934, 3541819, 11471241, 6999494],
+# #              [8884514, 4336603, 12356131, 5319352, 2385659]]
+# block_ids = [8922907, 6052548, 10062955, 3353143, 1761062]
+#
+# block_ids = tf.compat.v1.get_variable('block_ids', initializer=block_ids)
+# # print(block_ids)
+#
+# blocks_dataset = tf.data.TFRecordDataset(
+#     block_records_path, buffer_size=512 * 1024 * 1024)
+# blocks_dataset = blocks_dataset.batch(
+#     num_block_records, drop_remainder=True)
+# blocks = tf.compat.v1.get_variable(
 #     "blocks",
 #     initializer=tf.data.experimental.get_single_element(blocks_dataset))
-# blocks = tf.constant(tf.data.experimental.get_single_element(blocks_dataset))
-retrieved_blocks = tf.gather(blocks, block_ids)
-# print(retrieved_blocks)
+# # blocks = tf.get_variable(
+# #     "blocks",
+# #     initializer=tf.data.experimental.get_single_element(blocks_dataset))
+# # blocks = tf.constant(tf.data.experimental.get_single_element(blocks_dataset))
+# retrieved_blocks = tf.gather(blocks, block_ids)
+# # print(retrieved_blocks)
+#
+# tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
+# print('get tokenizer')
+#
+# (orig_tokens, block_token_map, block_token_ids, blocks) = (
+#     bert_utils.tokenize_with_original_mapping(blocks, tokenizer))
+# print(block_token_ids)
 
-tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
-print('get tokenizer')
-
-(orig_tokens, block_token_map, block_token_ids, blocks) = (
-    bert_utils.tokenize_with_original_mapping(blocks, tokenizer))
-print(block_token_ids)

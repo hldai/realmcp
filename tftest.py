@@ -3,6 +3,8 @@ import tensorflow as tf
 import numpy as np
 import random
 
+global_vals = tf.constant(np.random.uniform(-5, -4, (3, 5)), tf.float32)
+
 
 def get_ragged_vals(max_n_vals):
     all_vals = [[random.uniform(-1, 1) for _ in range(max_n_vals)]]
@@ -16,16 +18,32 @@ def get_ragged_vals(max_n_vals):
     return all_vals
 
 
+class DataGen:
+    def __init__(self):
+        pass
+
+    def __iter__(self):
+        return self.gen_val()
+
+    def gen_val(self):
+        for _ in range(3):
+            yield tf.constant(np.random.uniform(-1, 1, (3, 5))), -1
+
+
 def input_fn():
+    print('CALLLLLLLLLLLLLLLLLLLL input fn')
     def data_gen():
-        lens = [3, 1, 5, 2, 5, 3, 4, 2]
-        # print(all_vals)
-        # all_vals = get_ragged_vals(5)
-        for length in lens:
-            vals = list()
-            for _ in range(length):
-                vals.append(random.uniform(-1, 1))
-            yield tf.ragged.constant(vals), -1
+        for _ in range(3):
+            yield np.random.uniform(-1, 1, (3, 5)), -1
+        # lens = [3, 1, 5, 2, 5, 3, 4, 2]
+        # # print(all_vals)
+        # # all_vals = get_ragged_vals(5)
+        # for length in lens:
+        #     vals = list()
+        #     for _ in range(length):
+        #         vals.append(random.uniform(-1, 1))
+        #     yield tf.ragged.constant(vals), -1
+    # return DataGen()
 
     dataset = tf.data.Dataset.from_generator(
         data_gen,
@@ -42,8 +60,10 @@ def model_fn(features, labels, mode, params):
     lr = 0.0001
     k = 5
     weights = tf.Variable(tf.random_normal_initializer()(shape=[k, k], dtype=tf.float32))
-    vals_ragged = tf.ragged.constant(list(features))
-    vals_tensor = vals_ragged.to_tensor()
+    # vals_ragged = tf.ragged.constant(list(features))
+    # vals_tensor = vals_ragged.to_tensor()
+    # vals_tensor = features + global_vals
+    vals_tensor = features
     z = tf.matmul(vals_tensor, weights)
     predictions = z
     loss = tf.reduce_mean(z)
@@ -78,6 +98,10 @@ def train():
     model_dir = '/data/hldai/data/tmp/tmpmodels'
     num_train_steps = 10
 
+    logger = tf.get_logger()
+    logger.setLevel('INFO')
+    logger.propagate = False
+
     run_config = tf.estimator.RunConfig(
         model_dir=model_dir,
         log_step_count_steps=5,
@@ -106,7 +130,8 @@ def train():
     estimator.evaluate(input_fn)
 
 
-# train()
+train()
+exit()
 
 # digits = tf.ragged.constant([[3, 1, 4, 1], [], [5, 9, 2], [6], []])
 # vals = tf.ragged.constant([[2, 3], [1], [], [1, 4, 9], [0]])
@@ -146,12 +171,12 @@ def data_gen():
 # tf.data.experimental.save(dataset, '/data/hldai/data/tmp/tmp.tfdata', shard_func=lambda x: np.int64(0))
 # print('******************* save ************************')
 
-dataset = tf.data.experimental.load(
-    '/data/hldai/data/tmp/tmp.tfdata',
-    element_spec=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.float32))
-dataset = dataset.batch(8)
-all_docs = tf.data.experimental.get_single_element(dataset)
-print(all_docs)
+# dataset = tf.data.experimental.load(
+#     '/data/hldai/data/tmp/tmp.tfdata',
+#     element_spec=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.float32))
+# dataset = dataset.batch(8)
+# all_docs = tf.data.experimental.get_single_element(dataset)
+# print(all_docs)
 # for v in dataset:
 #     print(v)
 

@@ -12,14 +12,31 @@ from orqa.utils import scann_utils
 RetrieverOutputs = collections.namedtuple("RetrieverOutputs", ["logits", "blocks"])
 data_dir = '/data/hldai/data'
 
+num_block_records = 13353718
+retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
+var_name = "block_emb"
+checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
+np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
+blocks_list = list()
+
+
+def load_block_records():
+    print('LOADING blocks')
+    rand_lens = np.random.randint(5, 20, num_block_records)
+    for i, rand_len in enumerate(rand_lens):
+        vals = np.random.randint(0, 5000, rand_len)
+        blocks_list.append(vals)
+        if i % 1000000 == 0:
+            print(i)
+
 
 def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_beam_size):
     """Do retrieval."""
+    print('RRRRRRRRRRRRRRRRRetrieve', mode)
     block_records_path = os.path.join(data_dir, 'realm_data/blocks.tfr')
-    retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
-    num_block_records = 13353718
-    var_name = "block_emb"
-    checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
+    # retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
+    # var_name = "block_emb"
+    # checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
 
     retriever_module = hub.Module(
         embedder_path,
@@ -42,7 +59,7 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     #     var_name="block_emb",
     #     checkpoint_path=os.path.join(embedder_path, "encoded", "encoded.ckpt"),
     #     num_neighbors=retriever_beam_size)
-    np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
+    # np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
     n_docs = np_db.shape[0]
     # np_db = np_db[:n_docs // 2]
 
@@ -50,6 +67,7 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     block_emb = tf.compat.v1.get_variable('block_emb_tf', shape=np_db.shape)
 
     def init_fn(scaffold, sess):
+        print('FFFFFFFFFFFFFFFFFFFFFF INIT BLOCK EMB')
         sess.run(block_emb.initializer, {block_emb.initial_value: np_db})
 
     scaffold = tf.compat.v1.train.Scaffold(init_fn=init_fn)
@@ -66,6 +84,7 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
 
     # [retriever_beam_size]
     retrieved_block_ids = tf.squeeze(retrieved_block_ids)
+    print('RERERERERERERERERE_BLOCKIDS')
 
     # # [retriever_beam_size, projection_size]
     # retrieved_block_emb = tf.squeeze(retrieved_block_emb)
@@ -87,12 +106,15 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     # #     "blocks",
     # #     initializer=tf.data.experimental.get_single_element(blocks_dataset))
     # # blocks = tf.constant(tf.data.experimental.get_single_element(blocks_dataset))
-    # retrieved_blocks = tf.gather(blocks, retrieved_block_ids)
+
+    blocks = tf.ragged.constant(blocks_list, dtype=tf.int32, ragged_rank=1)
+    retrieved_blocks = tf.gather(blocks, retrieved_block_ids)
     # return RetrieverOutputs(logits=retrieved_logits, blocks=retrieved_blocks)
-    return retrieved_block_ids, retrieved_block_emb, scaffold
+    return retrieved_block_ids, retrieved_block_emb, retrieved_blocks, scaffold
 
 
 def model_fn(features, labels, mode, params):
+    print('MMMMMMMMMMMMMMMMMModel_fn', mode)
     embedder_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/embedder'
     reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/locbert'
     retriever_beam_size = 5
@@ -104,7 +126,7 @@ def model_fn(features, labels, mode, params):
     input_mask = features['input_mask']
     with tf.device("/cpu:0"):
         # retriever_outputs = retrieve(tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
-        retrieved_block_ids, question_emb, scaffold = retrieve(
+        retrieved_block_ids, question_emb, retrieved_blocks, scaffold = retrieve(
             tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
 
     predictions = question_emb
@@ -116,7 +138,8 @@ def model_fn(features, labels, mode, params):
     # logging_hook = tf.estimator.LoggingTensorHook(
     #     {"pred": predictions, 'labels': labels, 'feat': features['tok_id_seq_batch'],
     #      'ids': retrieved_block_ids}, every_n_iter=1)
-    logging_hook = tf.estimator.LoggingTensorHook({'ids': retrieved_block_ids, 'pred': predictions}, every_n_iter=1)
+    logging_hook = tf.estimator.LoggingTensorHook(
+        {'ids': retrieved_block_ids, 'pred': predictions, 'blocks': retrieved_blocks}, every_n_iter=1)
 
     train_op = optimization.create_optimizer(
         loss=loss,
@@ -264,6 +287,8 @@ def train_fet():
     model_dir = os.path.join(data_dir, 'tmp/tmpmodels')
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
     params = {'batch_size': 4}
+
+    load_block_records()
 
     # var_name = "block_emb"
     # checkpoint_path = os.path.join(embedder_module_path, "encoded", "encoded.ckpt")
