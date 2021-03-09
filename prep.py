@@ -37,7 +37,67 @@ def doc_texts_to_token_ids():
     datautils.save_pickle_data(tok_id_seqs, output_file)
 
 
-doc_texts_to_token_ids()
+def save_ragged_vals_to_dataset(vals_list, output_path):
+    # print(vals_list)
+    def data_gen():
+        # for i, vals in enumerate(vals_list):
+        #     if i % 10000 == 0:
+        #         print(i)
+        yield tf.ragged.constant(vals_list, dtype=tf.int32)
+
+    dataset = tf.data.Dataset.from_generator(
+        data_gen, output_signature=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.int32))
+
+    # for v in dataset:
+    #     print(v)
+    print('saving to', output_path)
+    tf.data.experimental.save(dataset, output_path, shard_func=lambda x: np.int64(0))
+    print('saved')
+
+
+def save_doc_tok_id_seqs_to_parts():
+    n_parts = 5
+
+    output_path_prefix = os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs_l128/blocks_tok_id_seqs_l128_p')
+    blocks_list = datautils.load_pickle_data(os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs.pkl'))
+    n_blocks = len(blocks_list)
+    print('blocks list loaded', n_blocks)
+
+    # # blocks_list = [[3, 4], [5, 3, 8], [8]]
+    # for i, v in enumerate(blocks_list):
+    #     print(v)
+    #     if i > 3:
+    #         break
+    # blocks_list = blocks_list[:10000]
+    n_blocks_per_part = n_blocks // n_parts
+    for i in range(n_parts):
+        pbeg = i * n_blocks_per_part
+        pend = (i + 1) * n_blocks_per_part if i < n_parts - 1 else n_blocks
+        print(i, pbeg, pend)
+        output_path = '{}{}.tfd'.format(output_path_prefix, i)
+        save_ragged_vals_to_dataset(blocks_list[pbeg:pend], output_path)
+        # if i >= 1:
+        #     break
+
+    # def data_gen():
+    #     for i, vals in enumerate(blocks_list):
+    #         if i % 10000 == 0:
+    #             print(i)
+    #         yield tf.ragged.constant([vals], dtype=tf.int32)
+    #
+    # dataset = tf.data.Dataset.from_generator(
+    #     data_gen,
+    #     output_signature=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.int32))
+    #
+    # # for v in dataset:
+    # #     print(v)
+    # print('saving')
+    # tf.data.experimental.save(dataset, '/data/hldai/data/tmp/tmp.tfdata', shard_func=lambda x: np.int64(0))
+    # print('saved')
+
+
+# doc_texts_to_token_ids()
+save_doc_tok_id_seqs_to_parts()
 
 # import numpy as np
 # example_path = '/data/hldai/data/tmp/tmp.tfr'

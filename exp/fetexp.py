@@ -7,6 +7,8 @@ import scann
 # from bert import tokenization
 from locbert import tokenization, optimization
 from orqa.utils import scann_utils
+import config
+from utils import datautils
 
 
 RetrieverOutputs = collections.namedtuple("RetrieverOutputs", ["logits", "blocks"])
@@ -28,6 +30,55 @@ np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
 #         blocks_list.append(vals)
 #         if i % 1000000 == 0:
 #             print(i)
+
+
+def load_rt_dataset_single_elem(dataset_path):
+    dataset = tf.data.experimental.load(
+        dataset_path,
+        element_spec=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.int32))
+    print('dataset loaded from {}'.format(dataset_path))
+    # for i, v in enumerate(dataset):
+    #     print(v)
+    #     if i > 3:
+    #         break
+    # dataset = dataset.batch(n_records)
+    # print('batched')
+    # t = time.time()
+    all_docs = tf.data.experimental.get_single_element(dataset)
+
+    # print(type(all_docs))
+    # print(all_docs[:3])
+    # print(time.time() - t)
+    return all_docs
+
+
+def load_dataset_parts(dataset_path_prefix, n_parts):
+    vals_list = list()
+    for i in range(n_parts):
+        dataset_path = '{}{}.tfd'.format(dataset_path_prefix, i)
+        vals = load_rt_dataset_single_elem(dataset_path)
+        vals_list.append(vals)
+    return tf.concat(vals_list, axis=0)
+
+
+def load_blocks_from_pkl():
+    blocks_list = datautils.load_pickle_data(os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs.pkl'))
+    print('blocks list loaded', len(blocks_list))
+    blocks = tf.ragged.constant(blocks_list, dtype=tf.int32)
+    print('blocks list to ragged')
+    return blocks
+
+
+def load_blocks_from_ragged_list():
+    dataset_path = os.path.join(config.DATA_DIR, 'tmp/blocks_tok_id_seqs_l128_all.tfdata')
+    dataset = tf.data.experimental.load(
+        dataset_path,
+        element_spec=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.int32))
+    print('dataset loaded')
+    dataset = dataset.batch(num_block_records)
+    print('batched')
+    blocks = tf.data.experimental.get_single_element(dataset)
+    return blocks
 
 
 def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_beam_size):
@@ -84,6 +135,7 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
 
     # [retriever_beam_size]
     # retrieved_block_ids = tf.squeeze(retrieved_block_ids)
+    retrieved_block_ids = tf.constant(np.random.randint(0, 8, (3, 5)))
     retrieved_block_ids = tf.reshape(retrieved_block_ids, shape=(-1, 5))
     print('RERERERERERERERERE_BLOCKIDS')
 
@@ -108,24 +160,41 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     # #     initializer=tf.data.experimental.get_single_element(blocks_dataset))
     # # blocks = tf.constant(tf.data.experimental.get_single_element(blocks_dataset))
 
-    blocks_list = list()
-    rand_lens = np.random.randint(5, 20, num_block_records)
-    for i, rand_len in enumerate(rand_lens):
-        vals = np.random.randint(0, 5000, rand_len)
-        blocks_list.append(vals)
-        if i % 1000000 == 0:
-            print(i)
+    # blocks_list = list()
+    # rand_lens = np.random.randint(5, 20, num_block_records)
+    # for i, rand_len in enumerate(rand_lens):
+    #     vals = np.random.randint(0, 5000, rand_len)
+    #     blocks_list.append(vals)
+    #     if i % 1000000 == 0:
+    #         print(i)
+    # blocks = tf.ragged.constant(blocks_list, dtype=tf.int32)
 
-    blocks = tf.ragged.constant(blocks_list, dtype=tf.int32)
+    # dataset_path = '/data/hldai/data/tmp/tmp.tfdata'
+    # dataset = tf.data.experimental.load(
+    #     dataset_path,
+    #     element_spec=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.int32))
+    # print('dataset loaded')
+    # print('batched')
+    # blocks = tf.data.experimental.get_single_element(dataset)
+    # blocks = load_dataset_parts(
+    #     os.path.join(data_dir, 'realm_data/blocks_tok_id_seqs_l128/blocks_tok_id_seqs_l128_p'), 5)
+    # retrieved_blocks = tf.gather(blocks, retrieved_block_ids).to_tensor()
+
+    blocks = load_blocks_from_ragged_list()
+    # blocks = load_blocks_from_pkl()
     retrieved_blocks = tf.gather(blocks, retrieved_block_ids).to_tensor()
-    # return RetrieverOutputs(logits=retrieved_logits, blocks=retrieved_blocks)
-    return retrieved_block_ids, retrieved_block_emb, retrieved_blocks, scaffold
+    retrieved_blocks = tf.squeeze(retrieved_blocks)
+
+    print('blocks obtained')
+
+    return scaffold, retrieved_block_emb, retrieved_block_ids, retrieved_blocks
+    # return scaffold, retrieved_block_emb, retrieved_block_ids
 
 
 def model_fn(features, labels, mode, params):
     print('MMMMMMMMMMMMMMMMMModel_fn', mode)
     embedder_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/embedder'
-    reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/locbert'
+    reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
     retriever_beam_size = 5
     lr = 1e-5
     num_train_steps = 10
@@ -135,10 +204,32 @@ def model_fn(features, labels, mode, params):
     input_mask = features['input_mask']
     with tf.device("/cpu:0"):
         # retriever_outputs = retrieve(tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
-        retrieved_block_ids, question_emb, retrieved_blocks, scaffold = retrieve(
+        scaffold, question_emb, retrieved_block_ids, retrieved_blocks = retrieve(
             tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
+        # scaffold, question_emb, retrieved_block_ids = retrieve(
+        #     tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
 
     predictions = question_emb
+
+    reader_module = hub.Module(
+        reader_module_path,
+        tags={"train"} if mode == tf.estimator.ModeKeys.TRAIN else {},
+        trainable=True)
+
+    r_tok_id_seqs = retrieved_blocks[0]
+    concat_outputs = reader_module(
+        dict(
+            # input_ids=tok_id_seq_batch,
+            # input_mask=tf.ones_like(tok_id_seq_batch),
+            # input_mask=input_mask,
+            # segment_ids=tf.zeros_like(tok_id_seq_batch)
+            # segment_ids=concat_inputs.segment_ids
+            input_ids=r_tok_id_seqs,
+            input_mask=tf.ones_like(r_tok_id_seqs),
+            segment_ids=tf.zeros_like(r_tok_id_seqs)
+        ),
+        signature="tokens",
+        as_dict=True)
     # predictions = retriever_outputs.logits
     loss = tf.reduce_mean(predictions)
     eval_metric_ops = None
@@ -148,7 +239,10 @@ def model_fn(features, labels, mode, params):
     #     {"pred": predictions, 'labels': labels, 'feat': features['tok_id_seq_batch'],
     #      'ids': retrieved_block_ids}, every_n_iter=1)
     logging_hook = tf.estimator.LoggingTensorHook(
-        {'ids': retrieved_block_ids, 'pred': predictions, 'rb': retrieved_blocks}, every_n_iter=1)
+        {'ids': retrieved_block_ids, 'pred': predictions, 'rb': concat_outputs['pooled_output'],
+         'bk': retrieved_blocks}, every_n_iter=1)
+    # logging_hook = tf.estimator.LoggingTensorHook(
+    #     {'ids': retrieved_block_ids, 'pred': predictions}, every_n_iter=1)
 
     train_op = optimization.create_optimizer(
         loss=loss,

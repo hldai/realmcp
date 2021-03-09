@@ -223,3 +223,8 @@ def scann_test():
 # (orig_tokens, block_token_map, block_token_ids, blocks) = (
 #     bert_utils.tokenize_with_original_mapping(blocks, tokenizer))
 # print(block_token_ids)
+
+vals = tf.ragged.constant([[3, 4], [2]], dtype=tf.int32)
+vals2 = tf.ragged.constant(vals)
+print(vals)
+print(vals2)
