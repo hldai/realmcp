@@ -46,7 +46,7 @@ class DataGen:
 #     return dataset
 
 
-def get_paded_bert_input(tok_id_seqs):
+def get_padded_bert_input(tok_id_seqs):
     max_seq_len = max(len(seq) for seq in tok_id_seqs)
     tok_id_seq_batch = np.zeros((len(tok_id_seqs), max_seq_len), np.int32)
     input_mask = np.zeros((len(tok_id_seqs), max_seq_len), np.int32)
@@ -57,23 +57,33 @@ def get_paded_bert_input(tok_id_seqs):
     return tok_id_seq_batch, input_mask
 
 
+def to_one_hot(inds, vec_len):
+    v = np.zeros(vec_len, dtype=np.float32)
+    for ind in inds:
+        v[ind] = 1
+    return v
+
+
 def input_fn():
     import json
     from locbert import tokenization
 
     batch_size = 4
     data_file = '/data/hldai/data/ultrafine/uf_data/crowd/test.json'
+    type_vocab_file = '/data/hldai/data/ultrafine/uf_data/ontology/types.txt'
     reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
     tokenizer = tokenization.FullTokenizer(vocab_file, do_lower_case=True)
 
-    texts = ['He is a teacher.',
-             'He teaches his students.',
-             'He is a lawyer.']
-    # N = 10
-    # metadata = {'m1': np.zeros(shape=(N, 2)), 'm2': np.ones(shape=(N, 3, 5))}
-    # num_samples = N
+    types, type_id_dict = datautils.load_vocab_file(type_vocab_file)
+    n_types = len(types)
 
+    # texts = ['He is a teacher.',
+    #          'He teaches his students.',
+    #          'He is a lawyer.']
+    texts = list()
+
+    all_labels = list()
     with open(data_file, encoding='utf-8') as f:
         for i, line in enumerate(f):
             x = json.loads(line)
@@ -81,13 +91,18 @@ def input_fn():
                 ' '.join(x['left_context_token']), x['mention_span'], ' '.join(x['right_context_token']))
             # print(text)
             texts.append(text)
-            if i > 5:
+            labels = x['y_str']
+            tids = [type_id_dict.get(t, -1) for t in labels]
+            tids = [tid for tid in tids if tid > -1]
+            # if i > 5:
+            all_labels.append(tids)
+            if len(texts) >= 8:
                 break
     print(len(texts), 'texts')
 
     def tok_id_seq_gen():
         tok_id_seqs = list()
-        labels = list()
+        y_vecs = list()
         for i, text in enumerate(texts):
             tokens = tokenizer.tokenize(text)
             # print(tokens)
@@ -95,19 +110,36 @@ def input_fn():
             tok_id_seq = tokenizer.convert_tokens_to_ids(tokens_full)
             # tok_id_seq = np.array([len(text)], np.float32)
             tok_id_seqs.append(tok_id_seq)
-            labels.append(i)
+            y_vecs.append(to_one_hot(all_labels[i], n_types))
             if len(tok_id_seqs) >= batch_size:
-                tok_id_seq_batch, input_mask = get_paded_bert_input(tok_id_seqs)
-                yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask, 'vals': np.random.uniform(-1, 1, (3, 5))}, labels
+                # tok_id_seq_batch, input_mask = get_padded_bert_input(tok_id_seqs)
+                tok_id_seq_batch = tf.ragged.constant(tok_id_seqs)
+                # y_vecs_tensor = tf.concat(y_vecs)
+                yield {'tok_id_seq_batch': tok_id_seq_batch,
+                       # 'input_mask': input_mask,
+                       'vals': np.random.uniform(-1, 1, (3, 5))}, y_vecs
                 tok_id_seqs = list()
-                labels = list()
+                y_vecs = list()
         if len(tok_id_seqs) > 0:
-            tok_id_seq_batch, input_mask = get_paded_bert_input(tok_id_seqs)
-            yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask, 'vals': np.random.uniform(-1, 1, (3, 5))}, labels
+            # tok_id_seq_batch, input_mask = get_padded_bert_input(tok_id_seqs)
+            # y_vecs_tensor = tf.concat(y_vecs)
+            tok_id_seq_batch = tf.ragged.constant(tok_id_seqs)
+            yield {'tok_id_seq_batch': tok_id_seq_batch,
+                   # 'input_mask': input_mask,
+                   'vals': np.random.uniform(-1, 1, (3, 5))}, y_vecs
 
+    # for v in iter(tok_id_seq_gen()):
+    #     print(v)
     dataset = tf.data.Dataset.from_generator(
         tok_id_seq_gen,
-        output_types=({'tok_id_seq_batch': tf.int32, 'input_mask': tf.int32, 'vals': tf.float32}, tf.int32))
+        output_signature=(
+            {
+                'tok_id_seq_batch': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1),
+                # 'tok_id_seq_batch': tf.TensorSpec(shape=None, dtype=tf.int32),
+                # 'input_mask': tf.TensorSpec(shape=None, dtype=tf.int32),
+                'vals': tf.TensorSpec(shape=None, dtype=tf.float32)
+            },
+            tf.TensorSpec(shape=None, dtype=tf.float32)))
 
     return dataset
 
@@ -122,28 +154,15 @@ def model_fn(features, labels, mode, params):
     # vals_tensor = vals_ragged.to_tensor()
     # vals_tensor = features + global_vals
     vals_tensor = features['vals']
-    tok_id_seq_batch = features['tok_id_seq_batch']
-    input_mask = features['input_mask']
+    # tok_id_seq_batch = features['tok_id_seq_batch'].to_tensor()
+    # input_mask = features['input_mask']
     z = tf.matmul(vals_tensor, weights)
     predictions = z
     loss = tf.reduce_mean(z)
     eval_metric_ops = None
 
-    reader_module = hub.Module(
-        reader_module_path,
-        tags={"train"} if mode == tf.estimator.ModeKeys.TRAIN else {},
-        trainable=True)
-
-    concat_outputs = reader_module(
-        dict(
-            input_ids=tok_id_seq_batch,
-            # input_mask=tf.ones_like(tok_id_seq_batch),
-            input_mask=input_mask,
-            segment_ids=tf.zeros_like(tok_id_seq_batch)
-            # segment_ids=concat_inputs.segment_ids
-        ),
-        signature="tokens",
-        as_dict=True)
+    rand_vals = tf.constant(np.random.randint(100, 105, (4, 5)), dtype=tf.int32)
+    tok_id_seq_batch = tf.concat((features['tok_id_seq_batch'], rand_vals), axis=1).to_tensor()
 
     # with tf.device("/cpu:0"):
     #     blocks_np = datautils.load_pickle_data(os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs.pkl'))
@@ -155,15 +174,15 @@ def model_fn(features, labels, mode, params):
     # logging_hook = tf.estimator.LoggingTensorHook(
     #     {"pred": predictions, 'labels': labels, 'feat': features['tok_id_seq_batch'],
     #      'ids': retrieved_block_ids}, every_n_iter=1)
-    logging_hook = tf.estimator.LoggingTensorHook({'z': z, 'feat': features['vals'],
-                                                   'b': concat_outputs['pooled_output']}, every_n_iter=1)
+    ls = tf.reduce_sum(labels, axis=1)
+    logging_hook = tf.estimator.LoggingTensorHook({
+        'z': z, 'feat': tok_id_seq_batch, 'ls': ls}, every_n_iter=1)
 
     train_op = optimization.create_optimizer(
         loss=loss,
         init_lr=lr,
         num_train_steps=num_train_steps,
-        num_warmup_steps=min(10000, max(100,
-                                        int(num_train_steps / 10))),
+        num_warmup_steps=min(10000, max(100, int(num_train_steps / 10))),
         use_tpu=False)
 
     return tf.estimator.EstimatorSpec(

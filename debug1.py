@@ -3,7 +3,7 @@ import time
 import numpy as np
 import os
 import config
-from utils import datautils
+from utils import datautils, bert_utils
 
 
 def save_ragged_vals_to_dataset(vals_list, output_path):
@@ -117,26 +117,89 @@ def save_ragged_tensors_dataset_tmp():
     print('saved')
 
 
+def load_dataset_parts(dataset_path_prefix, n_parts):
+    vals_list = list()
+    for i in range(n_parts):
+        dataset_path = '{}{}.tfd'.format(dataset_path_prefix, i)
+        vals = load_rt_dataset_single_elem(dataset_path)
+        vals_list.append(vals)
+    return tf.concat(vals_list, axis=0)
+
+
 n_records = 13353718
 # save_ragged_tensors_dataset()
 # save_ragged_tensors_dataset_tmp()
-load_dataset()
+# load_dataset()
 
+# dataset_path = os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs_l128_4m.tfd')
+# blocks = load_rt_dataset_single_elem(dataset_path)
+# print(blocks[:3])
+# print(blocks.shape)
+
+from locbert import tokenization
+
+block_records_path = os.path.join(config.DATA_DIR, 'realm_data/blocks.tfr')
+reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
+vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
+bert_tokenizer = tokenization.FullTokenizer(vocab_file, do_lower_case=True)
+blocks_dataset = tf.data.TFRecordDataset(
+    block_records_path, buffer_size=512 * 1024 * 1024)
+blocks_dataset = blocks_dataset.batch(10)
+
+tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
+for i, v in enumerate(blocks_dataset):
+    # print(v)
+    v = tf.reshape(v, (-1, 5))
+    question_token_ids = tokenizer.tokenize(v)
+    # print(question_token_ids)
+    # break
+
+    question_token_ids = tf.cast(
+        question_token_ids.merge_dims(2, 3).to_tensor(), tf.int32)
+    print(question_token_ids)
+    break
+    question_token_ids = question_token_ids[:, :10]
+    print(question_token_ids)
+
+    tmp = tf.ragged.constant([[2, 3, 7], [1]], dtype=tf.int32)
+    concat_inds = tf.concat([tmp, question_token_ids], axis=1)
+    concat_inds_tensor = concat_inds.to_tensor()
+    # print(concat_inds.to_tensor())
+    print(concat_inds_tensor)
+    print(concat_inds_tensor[:, -1])
+    reach_max_len = tf.equal(concat_inds_tensor[:, -1], tf.constant(0, tf.int32))
+    reach_max_len = 1 - tf.cast(reach_max_len, tf.int32)
+    # print(tf.equal(concat_inds_tensor[:, -1], tf.constant(0, tf.int32)))
+    inds_shape = tf.shape(concat_inds_tensor)
+    print(reach_max_len)
+    reach_max_len = tf.reshape(reach_max_len, (-1, 1))
+    seps_tensor = tf.ones_like(reach_max_len) * reach_max_len
+    print(seps_tensor)
+    print(tf.concat((concat_inds_tensor, seps_tensor), axis=1))
+    # print(concat_inds[])
+    # print(bert_tokenizer.convert_tokens_to_ids(bert_tokenizer.tokenize(v.numpy().decode('utf-8'))))
+    # print(bert_tokenizer.convert_ids_to_tokens(question_token_ids.numpy()[0]))
+    if i > 1:
+        break
+
+# vals = tf.constant(np.random.uniform(-1, 1, (3, 5, 4)))
+# print(vals)
+# print(vals[:, 0, :])
+
+# from tensorflow.keras import layers
+# vals = tf.constant([[3, 4, 0], [1, 0, 0], [7, 7, 8], [4, 9, 0]], tf.float32)
+# print(vals)
+# vals_shape = tf.shape(vals)
+# print(tf.range(vals_shape[0]))
+# # bm = tf.sequence_mask([2, 1, 3, 2], vals_shape[1])
+# bm = tf.sequence_mask(tf.range(vals_shape[0]), vals_shape[1])
+# print(tf.cast(bm, tf.int32))
+
+# blocks_list = [[3, 4], [7], [1, 8, 1]]
 # blocks = tf.ragged.constant(blocks_list, dtype=tf.int32)
+# tf.repeat(blocks, [2, 3, 2])
 # print('blocks done')
 # with tf.device('/cpu:0'):
 #     retrieved_block_ids = tf.constant([[0, 2], [198, 10008]])
 #     retrieved_blocks = tf.gather(blocks, retrieved_block_ids)
-# print(retrieved_blocks)
-
-# v = tf.constant([[-1], [-1], [-1]], tf.int32)
-# print(tf.concat([blocks, v], axis=1))
-# retrieved_block_ids = tf.constant([[0, 2], [0, 1]])
-# # retrieved_block_ids = tf.constant([0, 2])
-# retrieved_block_ids = tf.reshape(retrieved_block_ids, shape=(-1))
-# print(tf.rank(retrieved_block_ids))
-# print(retrieved_block_ids)
-# # print(tf.rank(retrieved_block_ids))
-# retrieved_blocks = tf.gather(blocks, retrieved_block_ids)
-# # retrieved_blocks = blocks[retrieved_block_ids]
 # print(retrieved_blocks)

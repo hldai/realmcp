@@ -8,19 +8,19 @@ import scann
 from locbert import tokenization, optimization
 from orqa.utils import scann_utils
 import config
-from utils import datautils
+from utils import datautils, bert_utils
 
 
 RetrieverOutputs = collections.namedtuple("RetrieverOutputs", ["logits", "blocks"])
 data_dir = '/data/hldai/data'
 
 num_block_records = 13353718
+n_block_rec_parts = [2670743, 5341486, 8012229, 10682972, 13353718]
 retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
 var_name = "block_emb"
 checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
 np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
 # blocks_list = list()
-#
 #
 # def load_block_records():
 #     print('LOADING blocks')
@@ -58,11 +58,14 @@ def load_dataset_parts(dataset_path_prefix, n_parts):
         dataset_path = '{}{}.tfd'.format(dataset_path_prefix, i)
         vals = load_rt_dataset_single_elem(dataset_path)
         vals_list.append(vals)
+    if n_parts == 1:
+        return vals_list[0]
     return tf.concat(vals_list, axis=0)
 
 
 def load_blocks_from_pkl():
     blocks_list = datautils.load_pickle_data(os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs.pkl'))
+    blocks_list = blocks_list[:10000000]
     print('blocks list loaded', len(blocks_list))
     blocks = tf.ragged.constant(blocks_list, dtype=tf.int32)
     print('blocks list to ragged')
@@ -135,9 +138,9 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
 
     # [retriever_beam_size]
     # retrieved_block_ids = tf.squeeze(retrieved_block_ids)
-    retrieved_block_ids = tf.constant(np.random.randint(0, 8, (3, 5)))
-    retrieved_block_ids = tf.reshape(retrieved_block_ids, shape=(-1, 5))
-    print('RERERERERERERERERE_BLOCKIDS')
+    # retrieved_block_ids = tf.constant(np.random.randint(0, 10000, (4, 5)))
+    retrieved_block_ids = tf.reshape(retrieved_block_ids, shape=(-1, retriever_beam_size))
+    # retrieved_block_ids = tf.reshape(retrieved_block_ids, shape=(-1))
 
     # # [retriever_beam_size, projection_size]
     # retrieved_block_emb = tf.squeeze(retrieved_block_emb)
@@ -148,20 +151,21 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     # # [retriever_beam_size]
     # retrieved_logits = tf.squeeze(retrieved_logits, 0)
 
-    # blocks_dataset = tf.data.TFRecordDataset(
-    #     block_records_path, buffer_size=512 * 1024 * 1024)
-    # blocks_dataset = blocks_dataset.batch(
-    #     num_block_records, drop_remainder=True)
-    # blocks = tf.compat.v1.get_local_variable(
-    #     "blocks",
-    #     initializer=tf.data.experimental.get_single_element(blocks_dataset))
+    blocks_dataset = tf.data.TFRecordDataset(
+        block_records_path, buffer_size=512 * 1024 * 1024)
+    blocks_dataset = blocks_dataset.batch(
+        num_block_records, drop_remainder=True)
+    blocks = tf.compat.v1.get_local_variable(
+        "blocks",
+        initializer=tf.data.experimental.get_single_element(blocks_dataset))
+    retrieved_blocks = tf.gather(blocks, retrieved_block_ids)
     # # blocks = tf.get_variable(
     # #     "blocks",
     # #     initializer=tf.data.experimental.get_single_element(blocks_dataset))
     # # blocks = tf.constant(tf.data.experimental.get_single_element(blocks_dataset))
 
     # blocks_list = list()
-    # rand_lens = np.random.randint(5, 20, num_block_records)
+    # rand_lens = np.random.randint(5, 20, 100)
     # for i, rand_len in enumerate(rand_lens):
     #     vals = np.random.randint(0, 5000, rand_len)
     #     blocks_list.append(vals)
@@ -177,13 +181,14 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     # print('batched')
     # blocks = tf.data.experimental.get_single_element(dataset)
     # blocks = load_dataset_parts(
-    #     os.path.join(data_dir, 'realm_data/blocks_tok_id_seqs_l128/blocks_tok_id_seqs_l128_p'), 5)
+    #     os.path.join(data_dir, 'realm_data/blocks_tok_id_seqs_l128/blocks_tok_id_seqs_l128_p'), 1)
     # retrieved_blocks = tf.gather(blocks, retrieved_block_ids).to_tensor()
 
-    blocks = load_blocks_from_ragged_list()
+    # blocks = load_rt_dataset_single_elem(os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs_l128_4k.tfd'))
+    # blocks = load_blocks_from_ragged_list()
     # blocks = load_blocks_from_pkl()
-    retrieved_blocks = tf.gather(blocks, retrieved_block_ids).to_tensor()
-    retrieved_blocks = tf.squeeze(retrieved_blocks)
+    # retrieved_blocks = tf.gather(blocks, retrieved_block_ids).to_tensor()
+    # retrieved_blocks = tf.squeeze(retrieved_blocks)
 
     print('blocks obtained')
 
@@ -198,49 +203,72 @@ def model_fn(features, labels, mode, params):
     retriever_beam_size = 5
     lr = 1e-5
     num_train_steps = 10
+    max_seq_len = 256
 
     # token_ids = tf.constant([[101, 2002, 2003, 1037, 3836, 1012, 102]], dtype=tf.int32)
-    tok_id_seq_batch = features['tok_id_seq_batch']
-    input_mask = features['input_mask']
+    tok_id_seq_batch_tensor = features['tok_id_seq_batch'].to_tensor()
+    input_mask = 1 - tf.cast(tf.equal(tok_id_seq_batch_tensor, tf.constant(0)), tf.int32)
+    # input_mask = features['input_mask']
     with tf.device("/cpu:0"):
         # retriever_outputs = retrieve(tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
         scaffold, question_emb, retrieved_block_ids, retrieved_blocks = retrieve(
-            tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
+            tok_id_seq_batch_tensor, input_mask, embedder_module_path, mode, retriever_beam_size)
         # scaffold, question_emb, retrieved_block_ids = retrieve(
         #     tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
 
+    tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
+    block_tok_id_seqs = tokenizer.tokenize(retrieved_blocks)
+    block_tok_id_seqs = tf.cast(
+        block_tok_id_seqs.merge_dims(2, 3).to_tensor(), tf.int32)
+    # batch_size = tf.shape(tok_id_seq_batch_tensor)[0]
+    blocks_max_seq_len = tf.shape(block_tok_id_seqs)[-1]
+    block_tok_id_seqs_flat = tf.reshape(block_tok_id_seqs, (-1, blocks_max_seq_len))
+
+    tok_id_seqs_repeat = features['tok_id_seqs_repeat']
+    # tok_id_seqs_repeat = features['tok_id_seqs_repeat'].to_tensor()
+    q_doc_tok_id_seqs = tf.concat((tok_id_seqs_repeat, block_tok_id_seqs_flat), axis=1).to_tensor()
+    q_doc_tok_id_seqs = q_doc_tok_id_seqs[:, :max_seq_len - 1]
+
+    # reader_module = hub.Module(
+    #     reader_module_path,
+    #     tags={"train"} if mode == tf.estimator.ModeKeys.TRAIN else {},
+    #     trainable=True)
+
+    # input_mask = tf.sequence_mask(lengths, seqs_shape[1])
+    # input_mask = tf.cast(input_mask, tf.int32)
+    # concat_outputs = reader_module(
+    #     dict(
+    #         # input_ids=tok_id_seq_batch,
+    #         # input_mask=tf.ones_like(tok_id_seq_batch),
+    #         # segment_ids=tf.zeros_like(tok_id_seq_batch)
+    #         # segment_ids=concat_inputs.segment_ids
+    #         input_ids=r_tok_id_seqs,
+    #         # input_mask=tf.ones_like(r_tok_id_seqs),
+    #         input_mask=input_mask,
+    #         segment_ids=tf.zeros_like(r_tok_id_seqs)
+    #     ),
+    #     signature="tokens",
+    #     as_dict=True)
+    # # predictions = retriever_outputs.logits
+    #
+    # concat_token_emb = concat_outputs["sequence_output"]
+
     predictions = question_emb
-
-    reader_module = hub.Module(
-        reader_module_path,
-        tags={"train"} if mode == tf.estimator.ModeKeys.TRAIN else {},
-        trainable=True)
-
-    r_tok_id_seqs = retrieved_blocks[0]
-    concat_outputs = reader_module(
-        dict(
-            # input_ids=tok_id_seq_batch,
-            # input_mask=tf.ones_like(tok_id_seq_batch),
-            # input_mask=input_mask,
-            # segment_ids=tf.zeros_like(tok_id_seq_batch)
-            # segment_ids=concat_inputs.segment_ids
-            input_ids=r_tok_id_seqs,
-            input_mask=tf.ones_like(r_tok_id_seqs),
-            segment_ids=tf.zeros_like(r_tok_id_seqs)
-        ),
-        signature="tokens",
-        as_dict=True)
-    # predictions = retriever_outputs.logits
     loss = tf.reduce_mean(predictions)
     eval_metric_ops = None
-
     # logging_hook = tf.estimator.LoggingTensorHook({"pred": predictions, 'feat': features}, every_n_iter=1)
     # logging_hook = tf.estimator.LoggingTensorHook(
     #     {"pred": predictions, 'labels': labels, 'feat': features['tok_id_seq_batch'],
     #      'ids': retrieved_block_ids}, every_n_iter=1)
-    logging_hook = tf.estimator.LoggingTensorHook(
-        {'ids': retrieved_block_ids, 'pred': predictions, 'rb': concat_outputs['pooled_output'],
-         'bk': retrieved_blocks}, every_n_iter=1)
+    logging_hook = tf.estimator.LoggingTensorHook({
+        'ids': retrieved_block_ids,
+        # 'pred': predictions,
+        # 'rb': tf.shape(concat_outputs['pooled_output']),
+        'qseq': q_doc_tok_id_seqs,
+        'bk': tf.shape(tok_id_seqs_repeat),
+        'bemb': tf.shape(block_tok_id_seqs_flat),
+        'bs': tf.shape(q_doc_tok_id_seqs),
+    }, every_n_iter=1)
     # logging_hook = tf.estimator.LoggingTensorHook(
     #     {'ids': retrieved_block_ids, 'pred': predictions}, every_n_iter=1)
 
@@ -263,7 +291,7 @@ def model_fn(features, labels, mode, params):
         scaffold=scaffold)
 
 
-def get_paded_bert_input(tok_id_seqs):
+def get_padded_bert_input(tok_id_seqs):
     max_seq_len = max(len(seq) for seq in tok_id_seqs)
     tok_id_seq_batch = np.zeros((len(tok_id_seqs), max_seq_len), np.int32)
     input_mask = np.zeros((len(tok_id_seqs), max_seq_len), np.int32)
@@ -274,23 +302,34 @@ def get_paded_bert_input(tok_id_seqs):
     return tok_id_seq_batch, input_mask
 
 
+def to_one_hot(inds, vec_len):
+    v = np.zeros(vec_len, dtype=np.float32)
+    for ind in inds:
+        v[ind] = 1
+    return v
+
+
 def input_fn():
     import json
     from locbert import tokenization
 
+    retriever_beam_size = 5
     batch_size = 4
     data_file = '/data/hldai/data/ultrafine/uf_data/crowd/test.json'
+    type_vocab_file = '/data/hldai/data/ultrafine/uf_data/ontology/types.txt'
     reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
     tokenizer = tokenization.FullTokenizer(vocab_file, do_lower_case=True)
 
-    texts = ['He is a teacher.',
-             'He teaches his students.',
-             'He is a lawyer.']
-    # N = 10
-    # metadata = {'m1': np.zeros(shape=(N, 2)), 'm2': np.ones(shape=(N, 3, 5))}
-    # num_samples = N
+    types, type_id_dict = datautils.load_vocab_file(type_vocab_file)
+    n_types = len(types)
 
+    # texts = ['He is a teacher.',
+    #          'He teaches his students.',
+    #          'He is a lawyer.']
+    texts = list()
+
+    all_labels = list()
     with open(data_file, encoding='utf-8') as f:
         for i, line in enumerate(f):
             x = json.loads(line)
@@ -298,33 +337,18 @@ def input_fn():
                 ' '.join(x['left_context_token']), x['mention_span'], ' '.join(x['right_context_token']))
             # print(text)
             texts.append(text)
-            if i > 5:
+            labels = x['y_str']
+            tids = [type_id_dict.get(t, -1) for t in labels]
+            tids = [tid for tid in tids if tid > -1]
+            # if i > 5:
+            all_labels.append(tids)
+            if len(texts) >= 8:
                 break
     print(len(texts), 'texts')
-    # exit()
-
-    # def meta_dict_gen():
-    #     for i in range(num_samples):
-    #         ls = {}
-    #         label = i
-    #         for key, val in metadata.items():
-    #             ls[key] = val[i]
-    #         yield ls, label
-
-    # for feat_dict, label in meta_dict_gen():
-    #     print(label)
-
-    # dataset = tf.data.Dataset.from_generator(
-    #     meta_dict_gen,
-    #     output_types=({k: tf.float32 for k in metadata}, tf.int32))
-
-    # for i, text in enumerate(texts):
-    #     tok_id_seq = tf.constant([len(text)], tf.float32)
-    #     yield {'tok_id_seq': tok_id_seq}, i
 
     def tok_id_seq_gen():
-        tok_id_seqs = list()
-        labels = list()
+        tok_id_seqs, tok_id_seqs_repeat = list(), list()
+        y_vecs = list()
         for i, text in enumerate(texts):
             tokens = tokenizer.tokenize(text)
             # print(tokens)
@@ -332,47 +356,36 @@ def input_fn():
             tok_id_seq = tokenizer.convert_tokens_to_ids(tokens_full)
             # tok_id_seq = np.array([len(text)], np.float32)
             tok_id_seqs.append(tok_id_seq)
-            labels.append(i)
+            for _ in range(retriever_beam_size):
+                tok_id_seqs_repeat.append(tok_id_seq)
+            y_vecs.append(to_one_hot(all_labels[i], n_types))
+
             if len(tok_id_seqs) >= batch_size:
-                tok_id_seq_batch, input_mask = get_paded_bert_input(tok_id_seqs)
-                yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, labels
-                tok_id_seqs = list()
-                labels = list()
+                # tok_id_seq_batch, input_mask = get_padded_bert_input(tok_id_seqs)
+                tok_id_seq_batch = tf.ragged.constant(tok_id_seqs)
+                tok_id_seqs_repeat_ragged = tf.ragged.constant(tok_id_seqs_repeat)
+                # y_vecs_tensor = tf.concat(y_vecs)
+                # yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, y_vecs
+                yield {'tok_id_seq_batch': tok_id_seq_batch, 'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged}, y_vecs
+                tok_id_seqs, tok_id_seqs_repeat, y_vecs = list(), list(), list()
+                # y_vecs = list()
         if len(tok_id_seqs) > 0:
-            tok_id_seq_batch, input_mask = get_paded_bert_input(tok_id_seqs)
-            yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, labels
+            # tok_id_seq_batch, input_mask = get_padded_bert_input(tok_id_seqs)
+            tok_id_seq_batch = tf.ragged.constant(tok_id_seqs)
+            tok_id_seqs_repeat_ragged = tf.ragged.constant(tok_id_seqs_repeat)
+            # y_vecs_tensor = tf.concat(y_vecs)
+            # yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, y_vecs
+            yield {'tok_id_seq_batch': tok_id_seq_batch, 'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged}, y_vecs
 
     # for v in iter(tok_id_seq_gen()):
     #     print(v)
     dataset = tf.data.Dataset.from_generator(
         tok_id_seq_gen,
-        output_types=({'tok_id_seq_batch': tf.int32, 'input_mask': tf.int32}, tf.int32))
+        output_signature=({'tok_id_seq_batch': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1),
+                          'tok_id_seqs_repeat': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1)},
+                          tf.TensorSpec(shape=None, dtype=tf.float32)))
 
     return dataset
-    # for v in iter(dataset):
-    #     yield v
-
-    # it = iter(dataset)
-    # for i, v in enumerate(it):
-    #     print(v)
-    #     if i > 1:
-    #         break
-    # return dataset.batch(4)
-
-    # vals = np.arange(100)
-    # vals.reshape(10, 10)
-    # dataset = tf.data.Dataset.range(10)
-    # dataset = dataset.batch(4)
-    # return dataset
-    # def _input_fn():
-    #     vals = [tf.constant([[3, 2, 4], [3, 1, 5], [6, 7, 4], [6, 3, 4]]),
-    #             tf.constant([[0, 2, 4], [3, -1, 5], [6, 7, 4], [6, 3, 4]]),
-    #             tf.constant([[0, 2, 4], [9, -1, 5], [6, 7, 4], [6, 3, 4]])]
-    #     # vals = [tf.constant([3, 2, 4]), tf.constant([3, 1, 5]), tf.constant([6, 7, 4])]
-    #     for i in range(3):
-    #         yield vals[i]
-    #     raise StopIteration
-    # return _input_fn
 
 
 def train_fet():
@@ -389,7 +402,7 @@ def train_fet():
     reader_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/bert')
     model_dir = os.path.join(data_dir, 'tmp/tmpmodels')
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
-    params = {'batch_size': 4}
+    params = {'batch_size': 4, 'retriever_beam_size': retriever_beam_size}
 
     # load_block_records()
 

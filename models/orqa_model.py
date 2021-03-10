@@ -23,7 +23,7 @@ from common.utils import exporters
 from common.utils import tensor_utils
 from language.orqa import ops as orqa_ops
 from language.orqa.datasets import orqa_dataset
-from orqa.utils import bert_utils
+from utils import bert_utils
 from orqa.utils import eval_utils
 from orqa.utils import scann_utils
 import six

@@ -37,13 +37,16 @@ def doc_texts_to_token_ids():
     datautils.save_pickle_data(tok_id_seqs, output_file)
 
 
-def save_ragged_vals_to_dataset(vals_list, output_path):
+def save_ragged_vals_to_dataset(vals_list, output_path, concat_all=True):
     # print(vals_list)
     def data_gen():
-        # for i, vals in enumerate(vals_list):
-        #     if i % 10000 == 0:
-        #         print(i)
-        yield tf.ragged.constant(vals_list, dtype=tf.int32)
+        if concat_all:
+            yield tf.ragged.constant(vals_list, dtype=tf.int32)
+        else:
+            for i, vals in enumerate(vals_list):
+                if i % 10000 == 0:
+                    print(i)
+                yield tf.ragged.constant([vals], dtype=tf.int32)
 
     dataset = tf.data.Dataset.from_generator(
         data_gen, output_signature=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.int32))
@@ -53,6 +56,17 @@ def save_ragged_vals_to_dataset(vals_list, output_path):
     print('saving to', output_path)
     tf.data.experimental.save(dataset, output_path, shard_func=lambda x: np.int64(0))
     print('saved')
+
+
+def save_doc_tok_id_seqs_singleall():
+    n_parts = 5
+
+    output_path = os.path.join(config.DATA_DIR, 'tmp/blocks_tok_id_seqs_l128_sa4m.tfd')
+    blocks_list = datautils.load_pickle_data(os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs.pkl'))
+    n_blocks = len(blocks_list)
+    print('blocks list loaded', n_blocks)
+    blocks_list = blocks_list[:4000000]
+    save_ragged_vals_to_dataset(blocks_list, output_path, concat_all=False)
 
 
 def save_doc_tok_id_seqs_to_parts():
@@ -75,7 +89,7 @@ def save_doc_tok_id_seqs_to_parts():
         pend = (i + 1) * n_blocks_per_part if i < n_parts - 1 else n_blocks
         print(i, pbeg, pend)
         output_path = '{}{}.tfd'.format(output_path_prefix, i)
-        save_ragged_vals_to_dataset(blocks_list[pbeg:pend], output_path)
+        save_ragged_vals_to_dataset(blocks_list[pbeg:pend], output_path, concat_all=True)
         # if i >= 1:
         #     break
 
@@ -96,8 +110,18 @@ def save_doc_tok_id_seqs_to_parts():
     # print('saved')
 
 
+def save_doc_tok_id_seqs_whole():
+    n_docs = 40000
+    output_path = os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs_l128_4k.tfd')
+    blocks_list = datautils.load_pickle_data(os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs.pkl'))
+    blocks_list = blocks_list[:n_docs]
+    save_ragged_vals_to_dataset(blocks_list, output_path)
+
+
 # doc_texts_to_token_ids()
-save_doc_tok_id_seqs_to_parts()
+# save_doc_tok_id_seqs_to_parts()
+save_doc_tok_id_seqs_whole()
+# save_doc_tok_id_seqs_singleall()
 
 # import numpy as np
 # example_path = '/data/hldai/data/tmp/tmp.tfr'
