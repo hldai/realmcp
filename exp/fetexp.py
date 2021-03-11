@@ -219,8 +219,8 @@ def pad_sep_to_tensor(tok_id_seqs, sep_tok_id):
 
 def model_fn(features, labels, mode, params):
     # print('MMMMMMMMMMMMMMMMMModel_fn', mode)
-    embedder_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/embedder'
-    reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
+    embedder_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/embedder')
+    reader_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/bert')
     retriever_beam_size = 5
     lr = 1e-5
     num_train_steps = 10
@@ -394,9 +394,6 @@ class InputData:
         self.train_data_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/crowd/train.json')
         self.dev_data_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/crowd/dev.json')
         self.test_data_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/crowd/test.json')
-        # self.type_vocab_file = '/data/hldai/data/ultrafine/uf_data/ontology/types.txt'
-        # self.reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
-        # self.vocab_file = os.path.join(self.reader_module_path, 'assets/vocab.txt')
         self.tokenizer = tokenizer
         self.types = types
         self.type_id_dict = type_id_dict
@@ -478,9 +475,6 @@ class InputData:
 # def input_fn(self, data_file):
 #     retriever_beam_size = 5
 #     batch_size = self.batch_size
-#     # data_file = '/data/hldai/data/ultrafine/uf_data/crowd/test.json'
-#     type_vocab_file = '/data/hldai/data/ultrafine/uf_data/ontology/types.txt'
-#     reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
 #     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
 #     tokenizer = tokenization.FullTokenizer(vocab_file, do_lower_case=True)
 #
