@@ -11,10 +11,10 @@ if platform().startswith('Windows'):
 elif MACHINE_NAME.startswith('rgcpu5'):
     PLATFORM = 'Linux'
     DATA_DIR = '/data/hldai/data'
-    OUTPUT_DIR = '/data/hldai/data/weakz'
+    OUTPUT_DIR = '/data/hldai/data/'
 else:
     PLATFORM = 'Linux'
     DATA_DIR = '/home/data/hldai/'
-    OUTPUT_DIR = '/data/hldai/weakz'
+    OUTPUT_DIR = '/data/hldai/'
 
 LOG_DIR = join(OUTPUT_DIR, 'log')

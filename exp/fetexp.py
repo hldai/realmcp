@@ -558,7 +558,7 @@ def train_fet():
     embedder_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
     reader_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/bert')
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
-    model_dir = os.path.join(data_dir, 'tmp/tmpmodels')
+    model_dir = os.path.join(config.OUTPUT_DIR, 'tmp/tmpmodels')
     type_vocab_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/ontology/types.txt')
 
     tokenizer = tokenization.FullTokenizer(vocab_file, do_lower_case=True)
@@ -598,8 +598,8 @@ def train_fet():
         )
 
     logger.info('DDDDDDDDDDDDDDDDDDDDD START')
-    estimator.evaluate(input_data.input_fn_test)
-    # tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+    # estimator.evaluate(input_data.input_fn_test)
+    tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
     # # mode = tf.estimator.ModeKeys.TRAIN
     # mode = tf.estimator.ModeKeys.PREDICT
