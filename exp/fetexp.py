@@ -429,7 +429,7 @@ class InputData:
                 tids = [tid for tid in tids if tid > -1]
                 # if i > 5:
                 all_labels.append(tids)
-                if len(texts) >= 8:
+                if len(texts) >= 12:
                     break
         print(len(texts), 'texts')
 
@@ -604,8 +604,8 @@ def train_fet():
         )
 
     logger.info('DDDDDDDDDDDDDDDDDDDDD START')
-    # estimator.evaluate(input_data.input_fn_test)
-    tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+    estimator.evaluate(input_data.input_fn_test)
+    # tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
     # # mode = tf.estimator.ModeKeys.TRAIN
     # mode = tf.estimator.ModeKeys.PREDICT
