@@ -136,54 +136,57 @@ n_records = 13353718
 # print(blocks[:3])
 # print(blocks.shape)
 
-from locbert import tokenization
+# from locbert import tokenization
+#
+# block_records_path = os.path.join(config.DATA_DIR, 'realm_data/blocks.tfr')
+# reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
+# vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
+# bert_tokenizer = tokenization.FullTokenizer(vocab_file, do_lower_case=True)
+# blocks_dataset = tf.data.TFRecordDataset(
+#     block_records_path, buffer_size=512 * 1024 * 1024)
+# blocks_dataset = blocks_dataset.batch(10)
+#
+# tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
+# for i, v in enumerate(blocks_dataset):
+#     # print(v)
+#     v = tf.reshape(v, (-1, 5))
+#     question_token_ids = tokenizer.tokenize(v)
+#     # print(question_token_ids)
+#     # break
+#
+#     question_token_ids = tf.cast(
+#         question_token_ids.merge_dims(2, 3).to_tensor(), tf.int32)
+#     print(question_token_ids)
+#     break
+#     question_token_ids = question_token_ids[:, :10]
+#     print(question_token_ids)
+#
+#     tmp = tf.ragged.constant([[2, 3, 7], [1]], dtype=tf.int32)
+#     concat_inds = tf.concat([tmp, question_token_ids], axis=1)
+#     concat_inds_tensor = concat_inds.to_tensor()
+#     # print(concat_inds.to_tensor())
+#     print(concat_inds_tensor)
+#     print(concat_inds_tensor[:, -1])
+#     reach_max_len = tf.equal(concat_inds_tensor[:, -1], tf.constant(0, tf.int32))
+#     reach_max_len = 1 - tf.cast(reach_max_len, tf.int32)
+#     # print(tf.equal(concat_inds_tensor[:, -1], tf.constant(0, tf.int32)))
+#     inds_shape = tf.shape(concat_inds_tensor)
+#     print(reach_max_len)
+#     reach_max_len = tf.reshape(reach_max_len, (-1, 1))
+#     seps_tensor = tf.ones_like(reach_max_len) * reach_max_len
+#     print(seps_tensor)
+#     print(tf.concat((concat_inds_tensor, seps_tensor), axis=1))
+#     # print(concat_inds[])
+#     # print(bert_tokenizer.convert_tokens_to_ids(bert_tokenizer.tokenize(v.numpy().decode('utf-8'))))
+#     # print(bert_tokenizer.convert_ids_to_tokens(question_token_ids.numpy()[0]))
+#     if i > 1:
+#         break
 
-block_records_path = os.path.join(config.DATA_DIR, 'realm_data/blocks.tfr')
-reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
-vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
-bert_tokenizer = tokenization.FullTokenizer(vocab_file, do_lower_case=True)
-blocks_dataset = tf.data.TFRecordDataset(
-    block_records_path, buffer_size=512 * 1024 * 1024)
-blocks_dataset = blocks_dataset.batch(10)
-
-tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
-for i, v in enumerate(blocks_dataset):
-    # print(v)
-    v = tf.reshape(v, (-1, 5))
-    question_token_ids = tokenizer.tokenize(v)
-    # print(question_token_ids)
-    # break
-
-    question_token_ids = tf.cast(
-        question_token_ids.merge_dims(2, 3).to_tensor(), tf.int32)
-    print(question_token_ids)
-    break
-    question_token_ids = question_token_ids[:, :10]
-    print(question_token_ids)
-
-    tmp = tf.ragged.constant([[2, 3, 7], [1]], dtype=tf.int32)
-    concat_inds = tf.concat([tmp, question_token_ids], axis=1)
-    concat_inds_tensor = concat_inds.to_tensor()
-    # print(concat_inds.to_tensor())
-    print(concat_inds_tensor)
-    print(concat_inds_tensor[:, -1])
-    reach_max_len = tf.equal(concat_inds_tensor[:, -1], tf.constant(0, tf.int32))
-    reach_max_len = 1 - tf.cast(reach_max_len, tf.int32)
-    # print(tf.equal(concat_inds_tensor[:, -1], tf.constant(0, tf.int32)))
-    inds_shape = tf.shape(concat_inds_tensor)
-    print(reach_max_len)
-    reach_max_len = tf.reshape(reach_max_len, (-1, 1))
-    seps_tensor = tf.ones_like(reach_max_len) * reach_max_len
-    print(seps_tensor)
-    print(tf.concat((concat_inds_tensor, seps_tensor), axis=1))
-    # print(concat_inds[])
-    # print(bert_tokenizer.convert_tokens_to_ids(bert_tokenizer.tokenize(v.numpy().decode('utf-8'))))
-    # print(bert_tokenizer.convert_ids_to_tokens(question_token_ids.numpy()[0]))
-    if i > 1:
-        break
-
-# vals = tf.constant(np.random.uniform(-1, 1, (3, 5, 4)))
-# print(vals)
+qv = tf.constant(np.random.uniform(-1, 1, (3, 4)))
+vals = tf.constant(np.random.uniform(-1, 1, (3, 5, 4)))
+print(qv)
+# print(tf.expand_dims(qv, axis=1))
+print(tf.matmul(tf.expand_dims(qv, axis=1), vals, transpose_b=True))
 # print(vals[:, 0, :])
 
 # from tensorflow.keras import layers

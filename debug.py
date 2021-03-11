@@ -184,6 +184,44 @@ def scann_test():
         print(retrieved_block_ids)
         print(time.time() - t)
 
+
+def loss_debug():
+    import tensorflow_probability as tfp
+
+    n_types = 13
+    n_neibors = 5
+    batch_size = 4
+    r = 1.0
+    zx_logits = tf.constant(np.random.uniform(-r, r, (batch_size, n_neibors)))
+    yzx_logits = tf.constant(np.random.uniform(-r, r, (batch_size, n_neibors, n_types)))
+    # print(zx_logits)
+    # print(yzx_logits)
+    log_softmax_zx_logits = tf.nn.log_softmax(zx_logits, axis=1)
+    # print(tf.reduce_sum(tf.math.exp(log_softmax_zx_logits), axis=1))
+    # exit()
+    log_sig_yzx_logits = tf.math.log_sigmoid(yzx_logits)
+    # print(log_sig_yzx_logits + tf.expand_dims(log_sig_zx_logits, 2))
+    z_log_probs = log_sig_yzx_logits + tf.expand_dims(log_softmax_zx_logits, 2)
+    log_probs = tf.reduce_logsumexp(z_log_probs, axis=1)
+    # print(log_probs)
+    # print(tf.shape(log_probs))
+    # print(z_log_probs)
+    # log_neg_probs = tfp.math.log1mexp(log_probs)
+    # print(log_neg_probs)
+    # print(tf.shape(log_neg_probs))
+
+    # print(tf.math.exp(log_probs) + tf.math.exp(log_neg_probs))
+    # print(tf.math.exp(tfp.math.log1mexp(tf.constant([0.1, 0.3, 0.9], tf.float32))))
+    # print(tfp.math.log1mexp(tf.constant([0.1, 0.3, 0.9], tf.float32)))
+    # print()
+
+    # log_probs = tf.math.log(tf.constant([0.1, 0.3, 0.9]))
+    # print(tf.exp(tf.math.log(tf.constant(0.9))))
+    # print(tf.math.log(1 - tf.exp(tf.math.log(tf.constant(0.9)))))
+    print('probs', tf.math.exp(log_probs))
+    log_neg_probs = tfp.math.log1mexp(log_probs)
+    print(tf.math.exp(log_probs) + tf.math.exp(log_neg_probs))
+
 # scann_test()
 #
 # from orqa.utils import bert_utils
@@ -224,7 +262,46 @@ def scann_test():
 #     bert_utils.tokenize_with_original_mapping(blocks, tokenizer))
 # print(block_token_ids)
 
-vals = tf.ragged.constant([[3, 4], [2]], dtype=tf.int32)
-vals2 = tf.ragged.constant(vals)
-print(vals)
-print(vals2)
+def pad_sep_to_tensor(tok_id_seqs):
+    reach_max_len = tf.equal(tok_id_seqs[:, -1], tf.constant(0, tf.int32))
+    reach_max_len = 1 - tf.cast(reach_max_len, tf.int32)
+    reach_max_len = tf.reshape(reach_max_len, (-1, 1))
+    seps_tensor = reach_max_len * sep_tok_id
+    # print(seps_tensor)
+    # print(tf.concat((q_doc_tok_id_seqs, seps_tensor), axis=1))
+    tok_id_seqs = tf.concat((tok_id_seqs, seps_tensor), axis=1)
+
+    is_zero = tf.cast(tf.equal(tok_id_seqs, tf.constant(0)), tf.int32)
+    # print(is_zero)
+    is_zero_cumsum = tf.cumsum(is_zero, axis=1)
+    sep_tensor = tf.cast(tf.equal(is_zero_cumsum, tf.constant(1)), tf.int32) * sep_tok_id
+    tok_id_seqs += sep_tensor
+    return tok_id_seqs
+
+
+sep_tok_id = 102
+# vals = tf.constant([[2, 3, 0, 0, 0], [1, 2, 3, 8, 5], [2, 3, 7, 1, 0]], tf.int32)
+# print(vals)
+# print(pad_sep_to_tensor(vals))
+labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]], tf.float32)
+preds = tf.constant([[0.9, 0.7, 0.3, 0.8], [0.9, 0.1, 0.1, 0.7]], tf.float32)
+# preds_for_true_pos = preds * labels
+# print(preds_for_true_pos)
+# correct_pos = tf.cast(tf.less(tf.constant(0.5), preds_for_true_pos), tf.float32)
+# print(correct_pos)
+# n_corrects = tf.reduce_sum(correct_pos, axis=1)
+# print(n_corrects)
+
+pos_preds = tf.cast(tf.less(tf.constant(0.5), preds), tf.float32)
+print(pos_preds)
+n_pred_pos = tf.reduce_sum(pos_preds, axis=1) + tf.constant(0.00001)
+n_true_pos = tf.reduce_sum(labels, axis=1) + tf.constant(0.00001)
+n_corrects = tf.reduce_sum(pos_preds * labels, axis=1)
+print(n_true_pos)
+print(n_pred_pos)
+print(n_corrects)
+
+precision = tf.reduce_mean(n_corrects / n_pred_pos)
+recall = tf.reduce_mean(n_corrects / n_true_pos)
+print(precision, recall)
+
