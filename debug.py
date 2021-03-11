@@ -292,16 +292,19 @@ preds = tf.constant([[0.9, 0.7, 0.3, 0.8], [0.9, 0.1, 0.1, 0.7]], tf.float32)
 # n_corrects = tf.reduce_sum(correct_pos, axis=1)
 # print(n_corrects)
 
-pos_preds = tf.cast(tf.less(tf.constant(0.5), preds), tf.float32)
-print(pos_preds)
-n_pred_pos = tf.reduce_sum(pos_preds, axis=1) + tf.constant(0.00001)
-n_true_pos = tf.reduce_sum(labels, axis=1) + tf.constant(0.00001)
-n_corrects = tf.reduce_sum(pos_preds * labels, axis=1)
-print(n_true_pos)
-print(n_pred_pos)
-print(n_corrects)
+# 3-1. Choose which unit is used to use for the operation.
+import tensorflow as tf
+from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
+from tensorflow.python.training import py_checkpoint_reader
 
-precision = tf.reduce_mean(n_corrects / n_pred_pos)
-recall = tf.reduce_mean(n_corrects / n_true_pos)
-print(precision, recall)
 
+latest_ckp = '/data/hldai/data/tmp/tmpmodels/model.ckpt-0'
+# print_tensors_in_checkpoint_file(latest_ckp, all_tensors=True, tensor_name='')
+
+# try:
+reader = py_checkpoint_reader.NewCheckpointReader(latest_ckp)
+var_to_shape_map = reader.get_variable_to_shape_map()
+var_to_dtype_map = reader.get_variable_to_dtype_map()
+for key, value in sorted(var_to_shape_map.items()):
+    print("tensor: %s (%s) %s" % (key, var_to_dtype_map[key].name, value))
+    print(type(reader.get_tensor(key)))

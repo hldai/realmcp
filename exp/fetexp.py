@@ -22,7 +22,8 @@ n_block_rec_parts = [2670743, 5341486, 8012229, 10682972, 13353718]
 retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
 var_name = "block_emb"
 checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
-np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
+np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)[:3000000]
+# np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
 # blocks_list = list()
 #
 # def load_block_records():
@@ -117,20 +118,20 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     #     checkpoint_path=os.path.join(embedder_path, "encoded", "encoded.ckpt"),
     #     num_neighbors=retriever_beam_size)
     # np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
-    n_docs = np_db.shape[0]
-    # np_db = np_db[:n_docs // 2]
+    # n_docs = np_db.shape[0]
 
-    # block_emb = tf.constant(np_db)
-    block_emb = tf.compat.v1.get_variable('block_emb_tf', shape=np_db.shape)
+    block_emb = tf.constant(np_db)
+    # block_emb = tf.compat.v1.get_variable('block_emb_tf', shape=np_db.shape)
 
-    def init_fn(scaffold, sess):
-        print('FFFFFFFFFFFFFFFFFFFFFF INIT BLOCK EMB')
-        sess.run(block_emb.initializer, {block_emb.initial_value: np_db})
+    # def init_fn(scaffold, sess):
+    #     print('FFFFFFFFFFFFFFFFFFFFFF INIT BLOCK EMB')
+    #     sess.run(block_emb.initializer, {block_emb.initial_value: np_db})
 
-    scaffold = tf.compat.v1.train.Scaffold(init_fn=init_fn)
+    # scaffold = tf.compat.v1.train.Scaffold(init_fn=init_fn)
+    scaffold = None
 
     searcher = scann.scann_ops.builder(block_emb, retriever_beam_size, "dot_product").tree(
-        num_leaves=1000, num_leaves_to_search=100, training_sample_size=250000).score_ah(
+        num_leaves=1000, num_leaves_to_search=100, training_sample_size=100000).score_ah(
         2, anisotropic_quantization_threshold=0.2).reorder(100).build()
 
     # [1, retriever_beam_size]
@@ -152,8 +153,9 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     question_emb_ex = tf.expand_dims(question_emb, axis=1)
     retrieved_logits = tf.matmul(question_emb_ex, retrieved_block_emb, transpose_b=True)
 
-    # # [retriever_beam_size]
-    # retrieved_logits = tf.squeeze(retrieved_logits, 0)
+    # scaffold = None
+    # retrieved_block_ids = tf.constant(np.random.randint(0, 10000, (2, retriever_beam_size)), tf.int32)
+    # retrieved_logits = tf.constant(np.random.uniform(-1, 1, (2, retriever_beam_size)), tf.float32)
 
     blocks_dataset = tf.data.TFRecordDataset(
         block_records_path, buffer_size=512 * 1024 * 1024)
@@ -163,40 +165,11 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
         "blocks",
         initializer=tf.data.experimental.get_single_element(blocks_dataset))
     retrieved_blocks = tf.gather(blocks, retrieved_block_ids)
-    # # blocks = tf.get_variable(
-    # #     "blocks",
-    # #     initializer=tf.data.experimental.get_single_element(blocks_dataset))
-    # # blocks = tf.constant(tf.data.experimental.get_single_element(blocks_dataset))
-
-    # blocks_list = list()
-    # rand_lens = np.random.randint(5, 20, 100)
-    # for i, rand_len in enumerate(rand_lens):
-    #     vals = np.random.randint(0, 5000, rand_len)
-    #     blocks_list.append(vals)
-    #     if i % 1000000 == 0:
-    #         print(i)
-    # blocks = tf.ragged.constant(blocks_list, dtype=tf.int32)
-
-    # dataset_path = '/data/hldai/data/tmp/tmp.tfdata'
-    # dataset = tf.data.experimental.load(
-    #     dataset_path,
-    #     element_spec=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.int32))
-    # print('dataset loaded')
-    # print('batched')
-    # blocks = tf.data.experimental.get_single_element(dataset)
-    # blocks = load_dataset_parts(
-    #     os.path.join(data_dir, 'realm_data/blocks_tok_id_seqs_l128/blocks_tok_id_seqs_l128_p'), 1)
-    # retrieved_blocks = tf.gather(blocks, retrieved_block_ids).to_tensor()
-
-    # blocks = load_rt_dataset_single_elem(os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs_l128_4k.tfd'))
-    # blocks = load_blocks_from_ragged_list()
-    # blocks = load_blocks_from_pkl()
-    # retrieved_blocks = tf.gather(blocks, retrieved_block_ids).to_tensor()
-    # retrieved_blocks = tf.squeeze(retrieved_blocks)
 
     print('blocks obtained')
 
-    return scaffold, question_emb, retrieved_block_emb, retrieved_block_ids, retrieved_blocks, retrieved_logits
+    # return scaffold, retrieved_block_ids, retrieved_blocks, retrieved_logits, question_emb
+    return scaffold, retrieved_block_ids, retrieved_blocks, retrieved_logits
     # return scaffold, retrieved_block_emb, retrieved_block_ids
 
 
@@ -221,13 +194,13 @@ def model_fn(features, labels, mode, params):
     # print('MMMMMMMMMMMMMMMMMModel_fn', mode)
     embedder_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/embedder')
     reader_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/bert')
-    retriever_beam_size = 5
     lr = 1e-5
     num_train_steps = 10
     max_seq_len = 256
     bert_dim = 768
     n_types = params['n_types']
     sep_tok_id = params['sep_tok_id']
+    retriever_beam_size = params['retriever_beam_size']
 
     # token_ids = tf.constant([[101, 2002, 2003, 1037, 3836, 1012, 102]], dtype=tf.int32)
     tok_id_seq_batch_tensor = features['tok_id_seq_batch'].to_tensor()
@@ -235,7 +208,7 @@ def model_fn(features, labels, mode, params):
     # input_mask = features['input_mask']
     with tf.device("/cpu:0"):
         # retriever_outputs = retrieve(tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
-        scaffold, question_emb, retrieved_block_emb, retrieved_block_ids, retrieved_blocks, zx_logits = retrieve(
+        scaffold, retrieved_block_ids, retrieved_blocks, zx_logits = retrieve(
             tok_id_seq_batch_tensor, input_mask, embedder_module_path, mode, retriever_beam_size)
         # scaffold, question_emb, retrieved_block_ids = retrieve(
         #     tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
@@ -254,13 +227,6 @@ def model_fn(features, labels, mode, params):
     q_doc_tok_id_seqs = q_doc_tok_id_seqs[:, :max_seq_len - 1]
     q_doc_tok_id_seqs = pad_sep_to_tensor(q_doc_tok_id_seqs, sep_tok_id)
 
-    # reach_max_len = tf.equal(q_doc_tok_id_seqs[:, -1], tf.constant(0, tf.int32))
-    # reach_max_len = 1 - tf.cast(reach_max_len, tf.int32)
-    # reach_max_len = tf.reshape(reach_max_len, (-1, 1))
-    # seps_tensor = reach_max_len * sep_tok_id
-    # # print(seps_tensor)
-    # # print(tf.concat((q_doc_tok_id_seqs, seps_tensor), axis=1))
-    # q_doc_tok_id_seqs = tf.concat((q_doc_tok_id_seqs, seps_tensor), axis=1)
     q_doc_input_mask = 1 - tf.cast(tf.equal(q_doc_tok_id_seqs, tf.constant(0, dtype=tf.int32)), tf.int32)
 
     reader_module = hub.Module(
@@ -311,6 +277,7 @@ def model_fn(features, labels, mode, params):
     # loss = tf.reduce_mean(predictions)
     loss_samples = -tf.reduce_sum(labels * log_probs + (1 - labels) * log_neg_probs, axis=1)
     loss = tf.reduce_mean(loss_samples)
+    # loss = tf.reduce_mean(loss_samples) + 0.00001 * tf.reduce_mean(question_emb)
 
     small_constant = tf.constant(0.00001)
     pos_preds = tf.cast(tf.less(tf.constant(0.5), predictions), tf.float32)
@@ -364,8 +331,8 @@ def model_fn(features, labels, mode, params):
         loss=loss,
         train_op=train_op,
         predictions=predictions,
-        # training_hooks=[train_logging_hook],
-        # evaluation_hooks=[logging_hook],
+        training_hooks=[train_logging_hook],
+        evaluation_hooks=[logging_hook],
         eval_metric_ops=eval_metric_ops,
         scaffold=scaffold)
 
@@ -389,8 +356,8 @@ def to_one_hot(inds, vec_len):
 
 
 class InputData:
-    def __init__(self, tokenizer, types, type_id_dict, retriever_beam_size):
-        self.batch_size = 2
+    def __init__(self, batch_size, tokenizer, types, type_id_dict, retriever_beam_size):
+        self.batch_size = batch_size
         self.train_data_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/crowd/train.json')
         self.dev_data_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/crowd/dev.json')
         self.test_data_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/crowd/test.json')
@@ -466,7 +433,9 @@ class InputData:
         dataset = tf.data.Dataset.from_generator(
             tok_id_seq_gen,
             output_signature=({'tok_id_seq_batch': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1),
-                              'tok_id_seqs_repeat': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1)},
+                               'tok_id_seqs_repeat': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1),
+                               # 'block_emb': tf.TensorSpec(shape=block_emb_shape, dtype=tf.float32)},
+                               },
                               tf.TensorSpec(shape=None, dtype=tf.float32)))
 
         return dataset
@@ -553,6 +522,7 @@ def train_fet():
 
     # run_train()
 
+    batch_size = 1
     retriever_beam_size = 5
     num_train_steps = 1000
     embedder_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
@@ -564,12 +534,12 @@ def train_fet():
     tokenizer = tokenization.FullTokenizer(vocab_file, do_lower_case=True)
     sep_tok_id = tokenizer.convert_tokens_to_ids(['[SEP]'])[0]
     types, type_id_dict = datautils.load_vocab_file(type_vocab_file)
-    input_data = InputData(tokenizer, types, type_id_dict, retriever_beam_size)
+    input_data = InputData(batch_size, tokenizer, types, type_id_dict, retriever_beam_size)
     num_eval_steps = 10
     n_types = len(types)
     print('sep token id', sep_tok_id)
     # exit()
-    params = {'batch_size': 1, 'retriever_beam_size': retriever_beam_size, 'n_types': n_types,
+    params = {'batch_size': batch_size, 'retriever_beam_size': retriever_beam_size, 'n_types': n_types,
               'sep_tok_id': sep_tok_id}
 
     run_config = tf.estimator.RunConfig(
