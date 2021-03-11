@@ -15,7 +15,7 @@ from utils import datautils, bert_utils
 
 
 RetrieverOutputs = collections.namedtuple("RetrieverOutputs", ["logits", "blocks"])
-data_dir = '/data/hldai/data'
+data_dir = config.DATA_DIR
 
 num_block_records = 13353718
 n_block_rec_parts = [2670743, 5341486, 8012229, 10682972, 13353718]
