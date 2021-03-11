@@ -391,9 +391,9 @@ def to_one_hot(inds, vec_len):
 class InputData:
     def __init__(self, tokenizer, types, type_id_dict, retriever_beam_size):
         self.batch_size = 2
-        self.train_data_file = '/data/hldai/data/ultrafine/uf_data/crowd/train.json'
-        self.dev_data_file = '/data/hldai/data/ultrafine/uf_data/crowd/dev.json'
-        self.test_data_file = '/data/hldai/data/ultrafine/uf_data/crowd/test.json'
+        self.train_data_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/crowd/train.json')
+        self.dev_data_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/crowd/dev.json')
+        self.test_data_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/crowd/test.json')
         # self.type_vocab_file = '/data/hldai/data/ultrafine/uf_data/ontology/types.txt'
         # self.reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
         # self.vocab_file = os.path.join(self.reader_module_path, 'assets/vocab.txt')
@@ -565,7 +565,7 @@ def train_fet():
     reader_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/bert')
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
     model_dir = os.path.join(data_dir, 'tmp/tmpmodels')
-    type_vocab_file = '/data/hldai/data/ultrafine/uf_data/ontology/types.txt'
+    type_vocab_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/ontology/types.txt')
 
     tokenizer = tokenization.FullTokenizer(vocab_file, do_lower_case=True)
     sep_tok_id = tokenizer.convert_tokens_to_ids(['[SEP]'])[0]
