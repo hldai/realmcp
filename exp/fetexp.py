@@ -17,12 +17,19 @@ from utils import datautils, bert_utils
 RetrieverOutputs = collections.namedtuple("RetrieverOutputs", ["logits", "blocks"])
 data_dir = config.DATA_DIR
 
-num_block_records = 13353718
+# num_block_records = 13353718
+num_block_records = 2000000
 n_block_rec_parts = [2670743, 5341486, 8012229, 10682972, 13353718]
 retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
 var_name = "block_emb"
 checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
-np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)[:3000000]
+# np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)[:4000000]
+block_emb_file = os.path.join(config.DATA_DIR, 'realm_data/block_emb_2m.pkl')
+block_records_path = os.path.join(config.DATA_DIR, 'realm_data/blocks_2m.tfr')
+# block_records_path = os.path.join(data_dir, 'realm_data/blocks.tfr')
+np_db = datautils.load_pickle_data(block_emb_file)
+# print('npdb type', type(np_db))
+# exit()
 # np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
 # blocks_list = list()
 #
@@ -88,10 +95,67 @@ def load_blocks_from_ragged_list():
     return blocks
 
 
+def retrieve_block_ids_dist(retriever_beam_size, question_emb):
+    retrieved_block_ids_list = list()
+    retrieved_block_embs_list = list()
+    block_embs = list()
+    searchers = list()
+    n_parts = 2
+    n_blocks = np_db.shape[0]
+    n_blocks_per_part = n_blocks // n_parts
+    print(n_blocks, 'BLOCKS', n_blocks_per_part, 'blocks per partition')
+    # for i in range(n_parts):
+    #     pbeg, pend = i * n_blocks_per_part, (i + 1) * n_blocks_per_part
+    #     if i == n_parts - 1:
+    #         pend = n_blocks
+    #
+    #     print('block split', pbeg, pend)
+    #     block_emb = tf.constant(np_db[pbeg:pend])
+    #     block_embs.append(block_emb)
+    #     # searcher = scann.scann_ops.builder(block_emb, retriever_beam_size, "dot_product").tree(
+    #     #     num_leaves=1000, num_leaves_to_search=100, training_sample_size=100000).score_ah(
+    #     #     2, anisotropic_quantization_threshold=0.2).reorder(100).build()
+    #     # searchers.append(searcher)
+    #
+    #     # [1, retriever_beam_size]
+    #     # retrieved_block_ids, _ = searcher.search_batched(question_emb)
+    #     retrieved_block_ids = tf.constant(np.random.randint(0, 1000, (1, retriever_beam_size)), tf.int32)
+    #     retrieveed_block_embs = tf.gather(block_emb, retrieved_block_ids)
+    #     retrieved_block_embs_list.append(retrieveed_block_embs)
+    #     retrieved_block_ids_g = retrieved_block_ids + pbeg
+    #     retrieved_block_ids_list.append(retrieved_block_ids_g)
+
+    block_emb1 = tf.constant(np_db[0:2000000], tf.float32)
+    searcher1 = scann.scann_ops.builder(block_emb1, retriever_beam_size, "dot_product").tree(
+        num_leaves=1000, num_leaves_to_search=100, training_sample_size=100000).score_ah(
+        2, anisotropic_quantization_threshold=0.2).reorder(100).build()
+
+    # [1, retriever_beam_size]
+    retrieved_block_ids, _ = searcher1.search_batched(question_emb)
+    retrieved_block_embs = tf.gather(block_emb1, retrieved_block_ids)
+    retrieved_block_embs_list.append(retrieved_block_embs)
+    retrieved_block_ids_g = retrieved_block_ids
+    retrieved_block_ids_list.append(retrieved_block_ids_g)
+
+    block_emb2 = tf.constant(np.random.uniform(-1, 1, (2000000, 128)), tf.float32)
+    searcher2 = scann.scann_ops.builder(block_emb2, retriever_beam_size, "dot_product").tree(
+        num_leaves=1000, num_leaves_to_search=100, training_sample_size=100000).score_ah(
+        2, anisotropic_quantization_threshold=0.2).reorder(100).build()
+
+    # [1, retriever_beam_size]
+    retrieved_block_ids, _ = searcher2.search_batched(question_emb)
+    retrieved_block_embs = tf.gather(block_emb2, retrieved_block_ids)
+    retrieved_block_embs_list.append(retrieved_block_embs)
+    retrieved_block_ids_g = retrieved_block_ids
+    retrieved_block_ids_list.append(retrieved_block_ids_g)
+
+    return retrieved_block_embs_list[0], retrieved_block_ids_list[0], retrieved_block_embs_list[1]
+    # return retrieved_block_embs_list[0], retrieved_block_ids_list[0], None
+
+
 def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_beam_size):
     """Do retrieval."""
     print('RRRRRRRRRRRRRRRRRetrieve', mode)
-    block_records_path = os.path.join(data_dir, 'realm_data/blocks.tfr')
     # retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
     # var_name = "block_emb"
     # checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
@@ -120,16 +184,16 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
     # np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
     # n_docs = np_db.shape[0]
 
-    block_emb = tf.constant(np_db)
     # block_emb = tf.compat.v1.get_variable('block_emb_tf', shape=np_db.shape)
-
+    #
     # def init_fn(scaffold, sess):
     #     print('FFFFFFFFFFFFFFFFFFFFFF INIT BLOCK EMB')
     #     sess.run(block_emb.initializer, {block_emb.initial_value: np_db})
-
+    #
     # scaffold = tf.compat.v1.train.Scaffold(init_fn=init_fn)
     scaffold = None
 
+    block_emb = tf.constant(np_db)
     searcher = scann.scann_ops.builder(block_emb, retriever_beam_size, "dot_product").tree(
         num_leaves=1000, num_leaves_to_search=100, training_sample_size=100000).score_ah(
         2, anisotropic_quantization_threshold=0.2).reorder(100).build()
@@ -139,6 +203,9 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
 
     # [1, retriever_beam_size, projection_size]
     retrieved_block_emb = tf.gather(block_emb, retrieved_block_ids)
+
+    # retrieved_block_emb, retrieved_block_ids, retrieved_block_emb1 = retrieve_block_ids_dist(
+    #     retriever_beam_size, question_emb)
 
     # [retriever_beam_size]
     # retrieved_block_ids = tf.squeeze(retrieved_block_ids)
@@ -168,9 +235,8 @@ def retrieve(query_token_id_seqs, input_mask, embedder_path, mode, retriever_bea
 
     print('blocks obtained')
 
-    # return scaffold, retrieved_block_ids, retrieved_blocks, retrieved_logits, question_emb
     return scaffold, retrieved_block_ids, retrieved_blocks, retrieved_logits
-    # return scaffold, retrieved_block_emb, retrieved_block_ids
+    # return scaffold, retrieved_block_ids, retrieved_blocks, retrieved_logits, retrieved_block_emb1
 
 
 def pad_sep_to_tensor(tok_id_seqs, sep_tok_id):
@@ -292,7 +358,9 @@ def model_fn(features, labels, mode, params):
     #      'ids': retrieved_block_ids}, every_n_iter=1)
     train_logging_hook = tf.estimator.LoggingTensorHook({
         'loss': loss,
-    }, every_n_iter=1)
+        # 'blocks': retrieved_blocks,
+        # 'tmp': tf.shape(retrieved_block_emb1)
+    }, every_n_iter=10)
     logging_hook = tf.estimator.LoggingTensorHook({
         'loss': loss,
         'pred': tf.reduce_mean(predictions)
@@ -307,7 +375,7 @@ def model_fn(features, labels, mode, params):
     #     'bk': tf.shape(zx_logits),
     #     'bemb': tf.shape(block_tok_id_seqs_flat),
     #     'bs': tf.shape(q_doc_tok_id_seqs),
-    }, every_n_iter=1)
+    }, every_n_iter=10)
     # logging_hook = tf.estimator.LoggingTensorHook(
     #     {'ids': retrieved_block_ids, 'pred': predictions}, every_n_iter=1)
     # pred_mean = tf.keras.metrics.Mean(name='mean_1')(tf.reduce_mean(predictions))
@@ -379,22 +447,26 @@ class InputData:
     def input_fn(self, data_file):
         batch_size = self.batch_size
         texts = list()
+        mstr_sep_texts = list()
         all_labels = list()
         with open(data_file, encoding='utf-8') as f:
             for i, line in enumerate(f):
                 x = json.loads(line)
                 mstr = x['mention_span']
-                text = '{} [SEP] {} {} {}'.format(
+                text = '{} {} {}'.format(
+                    ' '.join(x['left_context_token']), mstr, ' '.join(x['right_context_token']))
+                mstr_sep_text = '{} [SEP] {} {} {}'.format(
                     mstr, ' '.join(x['left_context_token']), mstr, ' '.join(x['right_context_token']))
                 # print(text)
                 texts.append(text)
+                mstr_sep_texts.append(mstr_sep_text)
                 labels = x['y_str']
                 tids = [self.type_id_dict.get(t, -1) for t in labels]
                 tids = [tid for tid in tids if tid > -1]
                 # if i > 5:
                 all_labels.append(tids)
-                if len(texts) >= 12:
-                    break
+                # if len(texts) >= 12:
+                #     break
         print(len(texts), 'texts')
 
         def tok_id_seq_gen():
@@ -402,13 +474,15 @@ class InputData:
             y_vecs = list()
             for i, text in enumerate(texts):
                 tokens = self.tokenizer.tokenize(text)
-                # print(tokens)
                 tokens_full = ['[CLS]'] + tokens + ['[SEP]']
                 tok_id_seq = self.tokenizer.convert_tokens_to_ids(tokens_full)
-                # tok_id_seq = np.array([len(text)], np.float32)
                 tok_id_seqs.append(tok_id_seq)
+
+                fet_tokens = ['[CLS]'] + self.tokenizer.tokenize(mstr_sep_texts[i]) + ['[SEP]']
+                fet_tok_id_seq = self.tokenizer.convert_tokens_to_ids(fet_tokens)
+                # tok_id_seq = np.array([len(text)], np.float32)
                 for _ in range(self.retriever_beam_size):
-                    tok_id_seqs_repeat.append(tok_id_seq)
+                    tok_id_seqs_repeat.append(fet_tok_id_seq)
                 y_vecs.append(to_one_hot(all_labels[i], self.n_types))
 
                 if len(tok_id_seqs) >= batch_size:
@@ -524,7 +598,7 @@ def train_fet():
 
     batch_size = 1
     retriever_beam_size = 5
-    num_train_steps = 1000
+    num_train_steps = 10000
     embedder_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
     reader_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/bert')
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
@@ -544,8 +618,8 @@ def train_fet():
 
     run_config = tf.estimator.RunConfig(
         model_dir=model_dir,
-        log_step_count_steps=5,
-        save_checkpoints_steps=10,
+        log_step_count_steps=10,
+        save_checkpoints_steps=100,
         save_checkpoints_secs=None,
         tf_random_seed=1355)
     estimator = tf.estimator.Estimator(

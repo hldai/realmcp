@@ -149,6 +149,7 @@ def model_fn(features, labels, mode, params):
     lr = 0.0001
     k = 5
     weights = tf.Variable(tf.random_normal_initializer()(shape=[k, k], dtype=tf.float32))
+    cvals = tf.constant(np.random.uniform(-1, 1), tf.float32)
     reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/bert'
     # vals_ragged = tf.ragged.constant(list(features))
     # vals_tensor = vals_ragged.to_tensor()
@@ -156,13 +157,13 @@ def model_fn(features, labels, mode, params):
     vals_tensor = features['vals']
     # tok_id_seq_batch = features['tok_id_seq_batch'].to_tensor()
     # input_mask = features['input_mask']
-    z = tf.matmul(vals_tensor, weights)
+    z = tf.matmul(vals_tensor, weights) + cvals
     predictions = z
     loss = tf.reduce_mean(z)
     eval_metric_ops = None
 
-    rand_vals = tf.constant(np.random.randint(100, 105, (4, 5)), dtype=tf.int32)
-    tok_id_seq_batch = tf.concat((features['tok_id_seq_batch'], rand_vals), axis=1).to_tensor()
+    # rand_vals = tf.constant(np.random.randint(100, 105, (4, 5)), dtype=tf.int32)
+    # tok_id_seq_batch = tf.concat((features['tok_id_seq_batch'], rand_vals), axis=1).to_tensor()
 
     # with tf.device("/cpu:0"):
     #     blocks_np = datautils.load_pickle_data(os.path.join(config.DATA_DIR, 'realm_data/blocks_tok_id_seqs.pkl'))
@@ -176,7 +177,7 @@ def model_fn(features, labels, mode, params):
     #      'ids': retrieved_block_ids}, every_n_iter=1)
     ls = tf.reduce_sum(labels, axis=1)
     logging_hook = tf.estimator.LoggingTensorHook({
-        'z': z, 'feat': tok_id_seq_batch, 'ls': ls}, every_n_iter=1)
+        'z': z, 'ls': ls}, every_n_iter=1)
 
     train_op = optimization.create_optimizer(
         loss=loss,
@@ -207,7 +208,7 @@ def train():
     run_config = tf.estimator.RunConfig(
         model_dir=model_dir,
         log_step_count_steps=5,
-        save_checkpoints_steps=100,
+        save_checkpoints_steps=5,
         save_checkpoints_secs=None,
         tf_random_seed=1355)
     estimator = tf.estimator.Estimator(
@@ -229,7 +230,8 @@ def train():
         # throttle_secs=FLAGS.eval_throttle_secs
         )
 
-    estimator.evaluate(input_fn)
+    # estimator.evaluate(input_fn)
+    tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
 
 train()

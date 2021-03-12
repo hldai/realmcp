@@ -118,10 +118,65 @@ def save_doc_tok_id_seqs_whole():
     save_ragged_vals_to_dataset(blocks_list, output_path)
 
 
+def sample_from_realm_blocks():
+    output_block_records_path = os.path.join(config.DATA_DIR, 'realm_data/blocks_2m.tfr')
+    output_block_emb_path = os.path.join(config.DATA_DIR, 'realm_data/block_emb_2m.pkl')
+    block_records_path = os.path.join(config.DATA_DIR, 'realm_data/blocks.tfr')
+    retriever_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/embedder')
+    var_name = "block_emb"
+    checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
+    np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
+    n_docs = np_db.shape[0]
+    n_keep = 2000000
+    idxs = np.random.permutation(np.arange(n_docs))[:n_keep]
+
+    idxs = np.sort(idxs)
+    datautils.save_pickle_data(np_db[idxs], output_block_emb_path)
+    print(idxs[:10])
+    # exit()
+
+    idxs = set(idxs)
+    # print(idxs[:10])
+    # exit()
+
+    blocks_dataset = tf.data.TFRecordDataset(
+        block_records_path, buffer_size=512 * 1024 * 1024)
+    with tf.io.TFRecordWriter(output_block_records_path) as file_writer:
+        for i, v in enumerate(blocks_dataset):
+            if i not in idxs:
+                continue
+            # # features = tf.train.Features(feature=by)
+            # feature = {'': bytes_feature([v.numpy()])}
+            # # print(feature)
+            # # features = {'text': tf.train.Features(feature=[v.numpy()])}
+            # features = tf.train.Features(feature=feature)
+            # example = tf.train.Example(features=features)
+            # print('TTTTTTTTTTTTTT', type(example.SerializeToString()))
+            # exit()
+            file_writer.write(v.numpy())
+            # print(v)
+            if i % 100000 == 0:
+                print(i)
+            #     break
+
+
+# sample_from_realm_blocks()
 # doc_texts_to_token_ids()
 # save_doc_tok_id_seqs_to_parts()
-save_doc_tok_id_seqs_whole()
+# save_doc_tok_id_seqs_whole()
 # save_doc_tok_id_seqs_singleall()
+
+
+# blocks_dataset = tf.data.TFRecordDataset(
+#     os.path.join(config.DATA_DIR, 'realm_data/blocks_2m.tfr'), buffer_size=512 * 1024 * 1024)
+# # blocks_dataset = tf.data.TFRecordDataset(
+# #     os.path.join(config.DATA_DIR, 'realm_data/blocks.tfr'), buffer_size=512 * 1024 * 1024)
+# # blocks_dataset.batch(3)
+# for i, v in enumerate(blocks_dataset.batch(3)):
+#     print(v)
+#     break
+#     # if i > 5:
+#     #     break
 
 # import numpy as np
 # example_path = '/data/hldai/data/tmp/tmp.tfr'

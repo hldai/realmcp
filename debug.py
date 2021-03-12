@@ -293,18 +293,32 @@ preds = tf.constant([[0.9, 0.7, 0.3, 0.8], [0.9, 0.1, 0.1, 0.7]], tf.float32)
 # print(n_corrects)
 
 # 3-1. Choose which unit is used to use for the operation.
-import tensorflow as tf
-from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
-from tensorflow.python.training import py_checkpoint_reader
+# import tensorflow as tf
+# from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
+# from tensorflow.python.training import py_checkpoint_reader
+#
+#
+# latest_ckp = '/data/hldai/data/tmp/tmpmodels/model.ckpt-3'
+# # print_tensors_in_checkpoint_file(latest_ckp, all_tensors=True, tensor_name='')
+#
+# # try:
+# reader = py_checkpoint_reader.NewCheckpointReader(latest_ckp)
+# var_to_shape_map = reader.get_variable_to_shape_map()
+# var_to_dtype_map = reader.get_variable_to_dtype_map()
+# for key, value in sorted(var_to_shape_map.items()):
+#     print("tensor: %s (%s) %s" % (key, var_to_dtype_map[key].name, value))
+#     print(type(reader.get_tensor(key)))
 
+import config
 
-latest_ckp = '/data/hldai/data/tmp/tmpmodels/model.ckpt-0'
-# print_tensors_in_checkpoint_file(latest_ckp, all_tensors=True, tensor_name='')
-
-# try:
-reader = py_checkpoint_reader.NewCheckpointReader(latest_ckp)
-var_to_shape_map = reader.get_variable_to_shape_map()
-var_to_dtype_map = reader.get_variable_to_dtype_map()
-for key, value in sorted(var_to_shape_map.items()):
-    print("tensor: %s (%s) %s" % (key, var_to_dtype_map[key].name, value))
-    print(type(reader.get_tensor(key)))
+num_block_records = 2000000
+block_records_path = os.path.join(config.DATA_DIR, 'realm_data/blocks_2m.tfr')
+blocks_dataset = tf.data.TFRecordDataset(
+    block_records_path, buffer_size=512 * 1024 * 1024)
+blocks_dataset = blocks_dataset.batch(
+    num_block_records, drop_remainder=True)
+blocks = tf.compat.v1.get_local_variable(
+    "blocks",
+    initializer=tf.data.experimental.get_single_element(blocks_dataset))
+print(blocks[0])
+# retrieved_blocks = tf.gather(blocks, retrieved_block_ids)
