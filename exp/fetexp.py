@@ -261,7 +261,7 @@ def model_fn(features, labels, mode, params):
     embedder_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/embedder')
     reader_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/bert')
     lr = 1e-5
-    num_train_steps = 10
+    num_train_steps = 100000
     max_seq_len = 256
     bert_dim = 768
     n_types = params['n_types']
@@ -320,8 +320,12 @@ def model_fn(features, labels, mode, params):
     # concat_token_emb = concat_outputs["sequence_output"]
     qd_reps = concat_outputs['sequence_output'][:, 0, :]
 
-    dense_layer = tf.keras.layers.Dense(n_types)
-    yzx_logits = dense_layer(qd_reps)
+    # dense_layer = tf.keras.layers.Dense(n_types)
+    # yzx_logits = dense_layer(qd_reps)
+    dense_weights = tf.Variable(
+        initial_value=np.random.uniform(-0.1, 0.1, (bert_dim, n_types)), trainable=True, dtype=tf.float32)
+    yzx_logits = tf.matmul(qd_reps, dense_weights)
+    # weight_sum = tf.reduce_sum(dense_layer.weights)
     yzx_logits = tf.reshape(yzx_logits, (-1, retriever_beam_size, n_types))
     zx_logits = tf.reshape(zx_logits, (-1, retriever_beam_size))
 
@@ -357,14 +361,18 @@ def model_fn(features, labels, mode, params):
     #     {"pred": predictions, 'labels': labels, 'feat': features['tok_id_seq_batch'],
     #      'ids': retrieved_block_ids}, every_n_iter=1)
     train_logging_hook = tf.estimator.LoggingTensorHook({
+        'batch_id': features['batch_id'],
         'loss': loss,
-        # 'blocks': retrieved_blocks,
-        # 'tmp': tf.shape(retrieved_block_emb1)
+        'ws': tf.reduce_sum(dense_weights),
+        'yzx_logits': tf.reduce_sum(yzx_logits),
+        # 'tmp': tf.shape(qd_reps)
     }, every_n_iter=10)
     logging_hook = tf.estimator.LoggingTensorHook({
+        'batch_id': features['batch_id'],
         'loss': loss,
-        'pred': tf.reduce_mean(predictions)
-    #     'pred': predictions,
+        # 'pred': tf.reduce_mean(predictions)
+        # 'pred': log_probs,
+        'tmp': tf.reduce_sum(dense_weights),
     #     'labels': labels,
     #     'log_probs': tf.shape(log_probs),
     #     'yzx_logits': tf.shape(yzx_logits),
@@ -472,6 +480,7 @@ class InputData:
         def tok_id_seq_gen():
             tok_id_seqs, tok_id_seqs_repeat = list(), list()
             y_vecs = list()
+            batch_id = 0
             for i, text in enumerate(texts):
                 tokens = self.tokenizer.tokenize(text)
                 tokens_full = ['[CLS]'] + tokens + ['[SEP]']
@@ -491,8 +500,9 @@ class InputData:
                     tok_id_seqs_repeat_ragged = tf.ragged.constant(tok_id_seqs_repeat)
                     # y_vecs_tensor = tf.concat(y_vecs)
                     # yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, y_vecs
-                    yield {'tok_id_seq_batch': tok_id_seq_batch, 'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged}, y_vecs
+                    yield {'batch_id': batch_id, 'tok_id_seq_batch': tok_id_seq_batch, 'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged}, y_vecs
                     tok_id_seqs, tok_id_seqs_repeat, y_vecs = list(), list(), list()
+                    batch_id += 1
                     # y_vecs = list()
             if len(tok_id_seqs) > 0:
                 # tok_id_seq_batch, input_mask = get_padded_bert_input(tok_id_seqs)
@@ -500,17 +510,20 @@ class InputData:
                 tok_id_seqs_repeat_ragged = tf.ragged.constant(tok_id_seqs_repeat)
                 # y_vecs_tensor = tf.concat(y_vecs)
                 # yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, y_vecs
-                yield {'tok_id_seq_batch': tok_id_seq_batch, 'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged}, y_vecs
+                yield {'batch_id': batch_id, 'tok_id_seq_batch': tok_id_seq_batch, 'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged}, y_vecs
 
         # for v in iter(tok_id_seq_gen()):
         #     print(v)
         dataset = tf.data.Dataset.from_generator(
             tok_id_seq_gen,
-            output_signature=({'tok_id_seq_batch': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1),
-                               'tok_id_seqs_repeat': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1),
-                               # 'block_emb': tf.TensorSpec(shape=block_emb_shape, dtype=tf.float32)},
-                               },
-                              tf.TensorSpec(shape=None, dtype=tf.float32)))
+            output_signature=(
+                {
+                    'batch_id': tf.TensorSpec(shape=None, dtype=tf.int32),
+                    'tok_id_seq_batch': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1),
+                    'tok_id_seqs_repeat': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1),
+                    # 'block_emb': tf.TensorSpec(shape=block_emb_shape, dtype=tf.float32)},
+                },
+                tf.TensorSpec(shape=None, dtype=tf.float32)))
 
         return dataset
 
@@ -618,8 +631,8 @@ def train_fet():
 
     run_config = tf.estimator.RunConfig(
         model_dir=model_dir,
-        log_step_count_steps=10,
-        save_checkpoints_steps=100,
+        log_step_count_steps=50,
+        save_checkpoints_steps=200,
         save_checkpoints_secs=None,
         tf_random_seed=1355)
     estimator = tf.estimator.Estimator(

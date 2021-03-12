@@ -311,14 +311,11 @@ preds = tf.constant([[0.9, 0.7, 0.3, 0.8], [0.9, 0.1, 0.1, 0.7]], tf.float32)
 
 import config
 
-num_block_records = 2000000
-block_records_path = os.path.join(config.DATA_DIR, 'realm_data/blocks_2m.tfr')
-blocks_dataset = tf.data.TFRecordDataset(
-    block_records_path, buffer_size=512 * 1024 * 1024)
-blocks_dataset = blocks_dataset.batch(
-    num_block_records, drop_remainder=True)
-blocks = tf.compat.v1.get_local_variable(
-    "blocks",
-    initializer=tf.data.experimental.get_single_element(blocks_dataset))
-print(blocks[0])
-# retrieved_blocks = tf.gather(blocks, retrieved_block_ids)
+dl = tf.keras.layers.Dense(10)
+vals = tf.constant(np.random.uniform(-1, 1, (2, 5)), tf.float32)
+print(dl(vals))
+print(dl.get_weights())
+
+with tf.compat.v1.variable_scope("layer_name", reuse=True):
+    weights = tf.compat.v1.get_variable("kernel") # do not specify
+    print(weights)
