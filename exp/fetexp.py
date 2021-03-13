@@ -1,4 +1,5 @@
 import os
+import logging
 import json
 import collections
 import numpy as np
@@ -366,7 +367,7 @@ def model_fn(features, labels, mode, params):
         'ws': tf.reduce_sum(dense_weights),
         'yzx_logits': tf.reduce_sum(yzx_logits),
         # 'tmp': tf.shape(qd_reps)
-    }, every_n_iter=10)
+    }, every_n_iter=50)
     logging_hook = tf.estimator.LoggingTensorHook({
         'batch_id': features['batch_id'],
         'loss': loss,
@@ -383,7 +384,7 @@ def model_fn(features, labels, mode, params):
     #     'bk': tf.shape(zx_logits),
     #     'bemb': tf.shape(block_tok_id_seqs_flat),
     #     'bs': tf.shape(q_doc_tok_id_seqs),
-    }, every_n_iter=10)
+    }, every_n_iter=100)
     # logging_hook = tf.estimator.LoggingTensorHook(
     #     {'ids': retrieved_block_ids, 'pred': predictions}, every_n_iter=1)
     # pred_mean = tf.keras.metrics.Mean(name='mean_1')(tf.reduce_mean(predictions))
@@ -398,8 +399,8 @@ def model_fn(features, labels, mode, params):
         loss=loss,
         init_lr=lr,
         num_train_steps=num_train_steps,
-        num_warmup_steps=min(10000, max(100,
-                                        int(num_train_steps / 10))),
+        num_warmup_steps=min(10000,
+                             max(100, int(num_train_steps / 10))),
         use_tpu=False)
 
     return tf.estimator.EstimatorSpec(
@@ -444,7 +445,7 @@ class InputData:
         self.retriever_beam_size = retriever_beam_size
 
     def input_fn_train(self):
-        return self.input_fn(self.train_data_file)
+        return self.input_fn(self.train_data_file, n_repeat=100)
 
     def input_fn_dev(self):
         return self.input_fn(self.dev_data_file)
@@ -452,7 +453,7 @@ class InputData:
     def input_fn_test(self):
         return self.input_fn(self.test_data_file)
 
-    def input_fn(self, data_file):
+    def input_fn(self, data_file, n_repeat=1):
         batch_size = self.batch_size
         texts = list()
         mstr_sep_texts = list()
@@ -480,37 +481,40 @@ class InputData:
         def tok_id_seq_gen():
             tok_id_seqs, tok_id_seqs_repeat = list(), list()
             y_vecs = list()
-            batch_id = 0
-            for i, text in enumerate(texts):
-                tokens = self.tokenizer.tokenize(text)
-                tokens_full = ['[CLS]'] + tokens + ['[SEP]']
-                tok_id_seq = self.tokenizer.convert_tokens_to_ids(tokens_full)
-                tok_id_seqs.append(tok_id_seq)
+            for _ in range(n_repeat):
+                batch_id = 0
+                for text_idx, text in enumerate(texts):
+                    tokens = self.tokenizer.tokenize(text)
+                    tokens_full = ['[CLS]'] + tokens + ['[SEP]']
+                    tok_id_seq = self.tokenizer.convert_tokens_to_ids(tokens_full)
+                    tok_id_seqs.append(tok_id_seq)
 
-                fet_tokens = ['[CLS]'] + self.tokenizer.tokenize(mstr_sep_texts[i]) + ['[SEP]']
-                fet_tok_id_seq = self.tokenizer.convert_tokens_to_ids(fet_tokens)
-                # tok_id_seq = np.array([len(text)], np.float32)
-                for _ in range(self.retriever_beam_size):
-                    tok_id_seqs_repeat.append(fet_tok_id_seq)
-                y_vecs.append(to_one_hot(all_labels[i], self.n_types))
+                    fet_tokens = ['[CLS]'] + self.tokenizer.tokenize(mstr_sep_texts[text_idx]) + ['[SEP]']
+                    fet_tok_id_seq = self.tokenizer.convert_tokens_to_ids(fet_tokens)
+                    # tok_id_seq = np.array([len(text)], np.float32)
+                    for _ in range(self.retriever_beam_size):
+                        tok_id_seqs_repeat.append(fet_tok_id_seq)
+                    y_vecs.append(to_one_hot(all_labels[text_idx], self.n_types))
 
-                if len(tok_id_seqs) >= batch_size:
+                    if len(tok_id_seqs) >= batch_size:
+                        # tok_id_seq_batch, input_mask = get_padded_bert_input(tok_id_seqs)
+                        tok_id_seq_batch = tf.ragged.constant(tok_id_seqs)
+                        tok_id_seqs_repeat_ragged = tf.ragged.constant(tok_id_seqs_repeat)
+                        # y_vecs_tensor = tf.concat(y_vecs)
+                        # yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, y_vecs
+                        yield {'batch_id': batch_id, 'tok_id_seq_batch': tok_id_seq_batch,
+                               'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged}, y_vecs
+                        tok_id_seqs, tok_id_seqs_repeat, y_vecs = list(), list(), list()
+                        batch_id += 1
+                        # y_vecs = list()
+                if len(tok_id_seqs) > 0:
                     # tok_id_seq_batch, input_mask = get_padded_bert_input(tok_id_seqs)
                     tok_id_seq_batch = tf.ragged.constant(tok_id_seqs)
                     tok_id_seqs_repeat_ragged = tf.ragged.constant(tok_id_seqs_repeat)
                     # y_vecs_tensor = tf.concat(y_vecs)
                     # yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, y_vecs
-                    yield {'batch_id': batch_id, 'tok_id_seq_batch': tok_id_seq_batch, 'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged}, y_vecs
-                    tok_id_seqs, tok_id_seqs_repeat, y_vecs = list(), list(), list()
-                    batch_id += 1
-                    # y_vecs = list()
-            if len(tok_id_seqs) > 0:
-                # tok_id_seq_batch, input_mask = get_padded_bert_input(tok_id_seqs)
-                tok_id_seq_batch = tf.ragged.constant(tok_id_seqs)
-                tok_id_seqs_repeat_ragged = tf.ragged.constant(tok_id_seqs_repeat)
-                # y_vecs_tensor = tf.concat(y_vecs)
-                # yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, y_vecs
-                yield {'batch_id': batch_id, 'tok_id_seq_batch': tok_id_seq_batch, 'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged}, y_vecs
+                    yield {'batch_id': batch_id, 'tok_id_seq_batch': tok_id_seq_batch,
+                           'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged}, y_vecs
 
         # for v in iter(tok_id_seq_gen()):
         #     print(v)
@@ -602,16 +606,18 @@ class InputData:
 
 
 def train_fet():
+    logfile = os.path.join(config.OUTPUT_DIR, 'tmp/realm_et.log')
     logger = tf.get_logger()
     # logger.setLevel('ERROR')
     logger.setLevel('INFO')
+    logger.addHandler(logging.FileHandler(logfile, mode='a'))
     logger.propagate = False
 
     # run_train()
 
     batch_size = 1
     retriever_beam_size = 5
-    num_train_steps = 10000
+    num_train_steps = 100000
     embedder_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
     reader_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/bert')
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
@@ -631,8 +637,8 @@ def train_fet():
 
     run_config = tf.estimator.RunConfig(
         model_dir=model_dir,
-        log_step_count_steps=50,
-        save_checkpoints_steps=200,
+        log_step_count_steps=100,
+        save_checkpoints_steps=500,
         save_checkpoints_secs=None,
         tf_random_seed=1355)
     estimator = tf.estimator.Estimator(
