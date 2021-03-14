@@ -16,6 +16,7 @@ from utils import datautils, bert_utils
 
 
 output_dir = os.path.join(config.DATA_DIR, 'realm_output')
+log_dir = os.path.join(config.OUTPUT_DIR, 'realm_output/log')
 data_dir = config.DATA_DIR
 
 # num_block_records = 13353718
@@ -538,7 +539,7 @@ def __setup_logging(name, to_file):
     if to_file:
         import datetime
         str_today = datetime.date.today().strftime('%y-%m-%d')
-        log_file = os.path.join(output_dir, 'log/{}-{}-{}.log'.format(
+        log_file = os.path.join(log_dir, '{}-{}-{}.log'.format(
             name, str_today, config.MACHINE_NAME)) if to_file else None
         logger.addHandler(logging.FileHandler(log_file, mode='a'))
         logger.info('logging to {}'.format(log_file))
