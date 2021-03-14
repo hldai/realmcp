@@ -15,7 +15,7 @@ import config
 from utils import datautils, bert_utils
 
 
-output_dir = os.path.join(config.DATA_DIR, 'realm_output')
+output_dir = os.path.join(config.OUTPUT_DIR, 'realm_output')
 log_dir = os.path.join(config.OUTPUT_DIR, 'realm_output/log')
 data_dir = config.DATA_DIR
 
