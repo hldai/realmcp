@@ -126,7 +126,7 @@ def scann_test():
 # scann_test()
 # import logging
 # import tensorflow_hub as hub
-import tensorflow as tf
+# import tensorflow as tf
 # import numpy as np
 # tf.logging.set_verbosity(tf.logging.INFO)
 # tf.logging.info('This is a log')
@@ -157,8 +157,8 @@ import tensorflow as tf
 #     print(batch)
 
 # import scann
-import numpy as np
-import time
+# import numpy as np
+# import time
 
 def scann_test():
     data_dir = '/data/hldai/data'
@@ -186,6 +186,8 @@ def scann_test():
 
 
 def loss_debug():
+    import tensorflow as tf
+    import numpy as np
     import tensorflow_probability as tfp
 
     n_types = 13
@@ -283,8 +285,8 @@ sep_tok_id = 102
 # vals = tf.constant([[2, 3, 0, 0, 0], [1, 2, 3, 8, 5], [2, 3, 7, 1, 0]], tf.int32)
 # print(vals)
 # print(pad_sep_to_tensor(vals))
-labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]], tf.float32)
-preds = tf.constant([[0.9, 0.7, 0.3, 0.8], [0.9, 0.1, 0.1, 0.7]], tf.float32)
+# labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]], tf.float32)
+# preds = tf.constant([[0.9, 0.7, 0.3, 0.8], [0.9, 0.1, 0.1, 0.7]], tf.float32)
 # preds_for_true_pos = preds * labels
 # print(preds_for_true_pos)
 # correct_pos = tf.cast(tf.less(tf.constant(0.5), preds_for_true_pos), tf.float32)
@@ -309,13 +311,20 @@ preds = tf.constant([[0.9, 0.7, 0.3, 0.8], [0.9, 0.1, 0.1, 0.7]], tf.float32)
 #     print("tensor: %s (%s) %s" % (key, var_to_dtype_map[key].name, value))
 #     print(type(reader.get_tensor(key)))
 
-import config
+import gzip
 
-dl = tf.keras.layers.Dense(10)
-vals = tf.constant(np.random.uniform(-1, 1, (2, 5)), tf.float32)
-print(dl(vals))
-print(dl.get_weights())
+f = gzip.open('/data/hldai/data/ultrafine/enwiki-20151002-type-sents.txt.gz', 'rt', encoding='utf-8')
+lines = list()
+for i, line in enumerate(f):
+    lines.append(line.strip())
+    # print(line.strip())
+    if len(lines) > 10:
+        lines.pop(0)
+    # if i > 100:
+    #     break
+    if i % 100000 == 0:
+        print(i)
+f.close()
 
-with tf.compat.v1.variable_scope("layer_name", reuse=True):
-    weights = tf.compat.v1.get_variable("kernel") # do not specify
-    print(weights)
+for line in lines:
+    print(line)
