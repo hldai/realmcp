@@ -123,107 +123,10 @@ def scann_test():
     # print(sess.run(z))
 
 
-# scann_test()
-# import logging
-# import tensorflow_hub as hub
-# import tensorflow as tf
-# import numpy as np
-# tf.logging.set_verbosity(tf.logging.INFO)
-# tf.logging.info('This is a log')
-
-# tf.enable_eager_execution()
-
-# N = 100
-# # dictionary of arrays:
-# metadata = {'m1': np.zeros(shape=(N,2)), 'm2': np.ones(shape=(N,3,5))}
-# num_samples = N
-#
-# def meta_dict_gen():
-#     for i in range(num_samples):
-#         ls = {}
-#         label = 0
-#         for key, val in metadata.items():
-#             ls[key] = val[i]
-#         yield ls, label
-#
-# dataset = tf.data.Dataset.from_generator(
-#     meta_dict_gen,
-#     output_types=({k: tf.float32 for k in metadata}, tf.int32))
-# # iter = dataset.make_one_shot_iterator()
-# # next_elem = iter.get_next()
-# # print(next_elem)
-# for i, batch in enumerate(dataset.batch(1)):
-#     # print(batch)
-#     print(batch)
-
-# import scann
-# import numpy as np
-# import time
-
-def scann_test():
-    data_dir = '/data/hldai/data'
-    retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
-    var_name = "block_emb"
-    with tf.device("/cpu:0"):
-        question_emb_np = np.random.uniform(-1, 1, (4, 128))
-        question_emb = tf.constant(question_emb_np, tf.float32)
-        checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
-        np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)
-        print(np_db.shape)
-        retriever_beam_size = 5
-
-        # block_emb = tf.constant(np_db)
-        block_emb = tf.compat.v1.get_variable('block_emb_tf', initializer=np_db)
-
-        searcher = scann.scann_ops.builder(block_emb, retriever_beam_size, "dot_product").tree(
-            num_leaves=1000, num_leaves_to_search=100, training_sample_size=250000).score_ah(
-            2, anisotropic_quantization_threshold=0.2).reorder(100).build()
-
-        t = time.time()
-        retrieved_block_ids, _ = searcher.search_batched(question_emb)
-        print(retrieved_block_ids)
-        print(time.time() - t)
-
-
-def loss_debug():
-    import tensorflow as tf
-    import numpy as np
-    import tensorflow_probability as tfp
-
-    n_types = 13
-    n_neibors = 5
-    batch_size = 4
-    r = 1.0
-    zx_logits = tf.constant(np.random.uniform(-r, r, (batch_size, n_neibors)))
-    yzx_logits = tf.constant(np.random.uniform(-r, r, (batch_size, n_neibors, n_types)))
-    # print(zx_logits)
-    # print(yzx_logits)
-    log_softmax_zx_logits = tf.nn.log_softmax(zx_logits, axis=1)
-    # print(tf.reduce_sum(tf.math.exp(log_softmax_zx_logits), axis=1))
-    # exit()
-    log_sig_yzx_logits = tf.math.log_sigmoid(yzx_logits)
-    # print(log_sig_yzx_logits + tf.expand_dims(log_sig_zx_logits, 2))
-    z_log_probs = log_sig_yzx_logits + tf.expand_dims(log_softmax_zx_logits, 2)
-    log_probs = tf.reduce_logsumexp(z_log_probs, axis=1)
-    # print(log_probs)
-    # print(tf.shape(log_probs))
-    # print(z_log_probs)
-    # log_neg_probs = tfp.math.log1mexp(log_probs)
-    # print(log_neg_probs)
-    # print(tf.shape(log_neg_probs))
-
-    # print(tf.math.exp(log_probs) + tf.math.exp(log_neg_probs))
-    # print(tf.math.exp(tfp.math.log1mexp(tf.constant([0.1, 0.3, 0.9], tf.float32))))
-    # print(tfp.math.log1mexp(tf.constant([0.1, 0.3, 0.9], tf.float32)))
-    # print()
-
-    # log_probs = tf.math.log(tf.constant([0.1, 0.3, 0.9]))
-    # print(tf.exp(tf.math.log(tf.constant(0.9))))
-    # print(tf.math.log(1 - tf.exp(tf.math.log(tf.constant(0.9)))))
-    print('probs', tf.math.exp(log_probs))
-    log_neg_probs = tfp.math.log1mexp(log_probs)
-    print(tf.math.exp(log_probs) + tf.math.exp(log_neg_probs))
-
+import tensorflow as tf
+v = tf.constant([[1.0], [1.0]])
+v1 = tf.constant([[3.4, 23], [7.1, 8.2]])
+print(tf.concat((v, v1), axis=1))
 # scann_test()
 #
 # from orqa.utils import bert_utils
@@ -310,21 +213,3 @@ sep_tok_id = 102
 # for key, value in sorted(var_to_shape_map.items()):
 #     print("tensor: %s (%s) %s" % (key, var_to_dtype_map[key].name, value))
 #     print(type(reader.get_tensor(key)))
-
-import gzip
-
-f = gzip.open('/data/hldai/data/ultrafine/enwiki-20151002-type-sents.txt.gz', 'rt', encoding='utf-8')
-lines = list()
-for i, line in enumerate(f):
-    lines.append(line.strip())
-    # print(line.strip())
-    if len(lines) > 10:
-        lines.pop(0)
-    # if i > 100:
-    #     break
-    if i % 100000 == 0:
-        print(i)
-f.close()
-
-for line in lines:
-    print(line)

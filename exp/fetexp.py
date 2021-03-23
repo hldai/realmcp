@@ -526,7 +526,8 @@ def init_pre_load_data(retriever_module_path):
     var_name = "block_emb"
     checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
     # np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)[:4000000]
-    block_emb_file = os.path.join(config.DATA_DIR, 'realm_data/realm_blocks/block_emb_2m.pkl')
+    # block_emb_file = os.path.join(config.DATA_DIR, 'realm_data/realm_blocks/block_emb_2m.pkl')
+    block_emb_file = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m-emb.pkl')
     # block_records_path = os.path.join(data_dir, 'realm_data/blocks.tfr')
     pre_load_data['np_db'] = datautils.load_pickle_data(block_emb_file)
 
@@ -565,10 +566,11 @@ def train_fet():
     tf_random_seed = 1355
     embedder_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
     reader_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/bert')
-    block_records_path = os.path.join(config.DATA_DIR, 'realm_data/realm_blocks/blocks_2m.tfr')
+    # block_records_path = os.path.join(config.DATA_DIR, 'realm_data/realm_blocks/blocks_2m.tfr')
+    block_records_path = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m.tfr')
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
     # model_dir = os.path.join(config.OUTPUT_DIR, 'tmp/tmpmodels')
-    model_dir = os.path.join(output_dir, 'models')
+    model_dir = os.path.join(output_dir, 'etdmodels')
     type_vocab_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/ontology/types.txt')
 
     tokenizer = tokenization.FullTokenizer(vocab_file, do_lower_case=True)
@@ -589,6 +591,9 @@ def train_fet():
     }
 
     init_pre_load_data(embedder_module_path)
+    # print(pre_load_data['np_db'].shape)
+    params['num_block_records'] = pre_load_data['np_db'].shape[0]
+    # exit()
     input_data = InputData(batch_size, tokenizer, types, type_id_dict, retriever_beam_size, n_train_repeat)
 
     run_config = tf.estimator.RunConfig(
