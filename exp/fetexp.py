@@ -324,23 +324,45 @@ def model_fn(features, labels, mode, params):
     #     kernel_initializer=kernel_initializer)
     # yzx_logits =
 
-    predictions = tf.exp(log_probs)
+    probs = tf.exp(log_probs)
     # loss = tf.reduce_mean(predictions)
-    loss_samples = -tf.reduce_sum(labels * log_probs + (1 - labels) * log_neg_probs, axis=1)
-    loss = tf.reduce_mean(loss_samples)
-    # loss = tf.reduce_mean(loss_samples) + 0.00001 * tf.reduce_mean(question_emb)
 
-    small_constant = tf.constant(0.00001)
-    pos_preds = tf.cast(tf.less(tf.constant(0.5), predictions), tf.float32)
-    n_pred_pos = tf.reduce_sum(pos_preds, axis=1) + small_constant
-    n_true_pos = tf.reduce_sum(labels, axis=1) + small_constant
-    n_corrects = tf.reduce_sum(pos_preds * labels, axis=1)
-    precision = tf.reduce_mean(n_corrects / n_pred_pos)
-    recall = tf.reduce_mean(n_corrects / n_true_pos)
-    # logging_hook = tf.estimator.LoggingTensorHook({"pred": predictions, 'feat': features}, every_n_iter=1)
-    # logging_hook = tf.estimator.LoggingTensorHook(
-    #     {"pred": predictions, 'labels': labels, 'feat': features['tok_id_seq_batch'],
-    #      'ids': retrieved_block_ids}, every_n_iter=1)
+    loss = None
+    eval_metric_ops = None
+    train_op = None
+    if mode != tf.estimator.ModeKeys.PREDICT:
+        loss_samples = -tf.reduce_sum(labels * log_probs + (1 - labels) * log_neg_probs, axis=1)
+        loss = tf.reduce_mean(loss_samples)
+        # loss = tf.reduce_mean(loss_samples) + 0.00001 * tf.reduce_mean(question_emb)
+
+        train_op = optimization.create_optimizer(
+            loss=loss,
+            init_lr=lr,
+            num_train_steps=num_train_steps,
+            num_warmup_steps=min(10000,
+                                 max(100, int(num_train_steps / 10))),
+            use_tpu=False)
+
+        small_constant = tf.constant(0.00001)
+        pos_preds = tf.cast(tf.less(tf.constant(0.5), probs), tf.float32)
+        n_pred_pos = tf.reduce_sum(pos_preds, axis=1) + small_constant
+        n_true_pos = tf.reduce_sum(labels, axis=1) + small_constant
+        n_corrects = tf.reduce_sum(pos_preds * labels, axis=1)
+        precision = tf.reduce_mean(n_corrects / n_pred_pos)
+        recall = tf.reduce_mean(n_corrects / n_true_pos)
+
+        p_mean, p_op = tf.compat.v1.metrics.mean(precision)
+        r_mean, r_op = tf.compat.v1.metrics.mean(recall)
+        f1 = 2 * p_mean * r_mean / (p_mean + r_mean + small_constant)
+
+        eval_metric_ops = {
+            # 'precision': tf.compat.v1.metrics.mean(precision),
+            # 'recall': tf.compat.v1.metrics.mean(recall)
+            'precision': (p_mean, p_op),
+            'recall': (r_mean, r_op),
+            'f1': (f1, tf.group(p_op, r_op))
+        }
+
     train_logging_hook = tf.estimator.LoggingTensorHook({
         'batch_id': features['batch_id'],
         'loss': loss,
@@ -354,40 +376,9 @@ def model_fn(features, labels, mode, params):
         # 'pred': tf.reduce_mean(predictions)
         # 'pred': log_probs,
         'tmp': tf.reduce_sum(dense_weights),
-    #     'labels': labels,
-    #     'log_probs': tf.shape(log_probs),
-    #     'yzx_logits': tf.shape(yzx_logits),
-    #     'co': tf.shape(qd_reps),
-    #     # 'prob_sum': prob_sum,
-    #     '1b': tf.shape(question_emb),
-    #     # 'qseq': q_doc_tok_id_seqs,
-    #     'bk': tf.shape(zx_logits),
-    #     'bemb': tf.shape(block_tok_id_seqs_flat),
-    #     'bs': tf.shape(q_doc_tok_id_seqs),
     }, every_n_iter=eval_log_steps)
-    # logging_hook = tf.estimator.LoggingTensorHook(
-    #     {'ids': retrieved_block_ids, 'pred': predictions}, every_n_iter=1)
-    # pred_mean = tf.keras.metrics.Mean(name='mean_1')(tf.reduce_mean(predictions))
-    # pred_mean = tf.reduce_mean(predictions)
-    # eval_metric_ops = None
-    p_mean, p_op = tf.compat.v1.metrics.mean(precision)
-    r_mean, r_op = tf.compat.v1.metrics.mean(recall)
-    f1 = 2 * p_mean * r_mean / (p_mean + r_mean + small_constant)
-    eval_metric_ops = {
-        # 'precision': tf.compat.v1.metrics.mean(precision),
-        # 'recall': tf.compat.v1.metrics.mean(recall)
-        'precision': (p_mean, p_op),
-        'recall': (r_mean, r_op),
-        'f1': (f1, tf.group(p_op, r_op))
-    }
 
-    train_op = optimization.create_optimizer(
-        loss=loss,
-        init_lr=lr,
-        num_train_steps=num_train_steps,
-        num_warmup_steps=min(10000,
-                             max(100, int(num_train_steps / 10))),
-        use_tpu=False)
+    predictions = {'probs': probs, 'text_ids': features['text_ids'], 'block_ids': retrieved_block_ids}
 
     return tf.estimator.EstimatorSpec(
         mode=mode,
@@ -466,7 +457,7 @@ class InputData:
         print(len(texts), 'texts')
 
         def tok_id_seq_gen():
-            tok_id_seqs, tok_id_seqs_repeat = list(), list()
+            text_ids, tok_id_seqs, tok_id_seqs_repeat = list(), list(), list()
             y_vecs = list()
             for _ in range(n_repeat):
                 batch_id = 0
@@ -481,6 +472,7 @@ class InputData:
                     # tok_id_seq = np.array([len(text)], np.float32)
                     for _ in range(self.retriever_beam_size):
                         tok_id_seqs_repeat.append(fet_tok_id_seq)
+                    text_ids.append(text_idx)
                     y_vecs.append(to_one_hot(all_labels[text_idx], self.n_types))
 
                     if len(tok_id_seqs) >= batch_size:
@@ -490,8 +482,10 @@ class InputData:
                         # y_vecs_tensor = tf.concat(y_vecs)
                         # yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, y_vecs
                         yield {'batch_id': batch_id, 'tok_id_seq_batch': tok_id_seq_batch,
-                               'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged}, y_vecs
-                        tok_id_seqs, tok_id_seqs_repeat, y_vecs = list(), list(), list()
+                               'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged,
+                               'text_ids': text_ids
+                               }, y_vecs
+                        text_ids, tok_id_seqs, tok_id_seqs_repeat, y_vecs = list(), list(), list(), list()
                         batch_id += 1
                         # y_vecs = list()
                 if len(tok_id_seqs) > 0:
@@ -501,7 +495,9 @@ class InputData:
                     # y_vecs_tensor = tf.concat(y_vecs)
                     # yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, y_vecs
                     yield {'batch_id': batch_id, 'tok_id_seq_batch': tok_id_seq_batch,
-                           'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged}, y_vecs
+                           'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged,
+                           'text_ids': text_ids
+                           }, y_vecs
 
         # for v in iter(tok_id_seq_gen()):
         #     print(v)
@@ -512,6 +508,7 @@ class InputData:
                     'batch_id': tf.TensorSpec(shape=None, dtype=tf.int32),
                     'tok_id_seq_batch': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1),
                     'tok_id_seqs_repeat': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1),
+                    'text_ids': tf.TensorSpec(shape=None, dtype=tf.int32),
                     # 'block_emb': tf.TensorSpec(shape=block_emb_shape, dtype=tf.float32)},
                 },
                 tf.TensorSpec(shape=None, dtype=tf.float32)))
@@ -519,15 +516,15 @@ class InputData:
         return dataset
 
 
-def init_pre_load_data(retriever_module_path):
+def init_pre_load_data(block_emb_file):
     # num_block_records = 13353718
     num_block_records = 2000000
     n_block_rec_parts = [2670743, 5341486, 8012229, 10682972, 13353718]
     var_name = "block_emb"
-    checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
+    # checkpoint_path = os.path.join(retriever_module_path, "encoded", "encoded.ckpt")
     # np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor(var_name)[:4000000]
     # block_emb_file = os.path.join(config.DATA_DIR, 'realm_data/realm_blocks/block_emb_2m.pkl')
-    block_emb_file = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m-emb.pkl')
+    # block_emb_file = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m-emb.pkl')
     # block_records_path = os.path.join(data_dir, 'realm_data/blocks.tfr')
     pre_load_data['np_db'] = datautils.load_pickle_data(block_emb_file)
 
@@ -546,8 +543,19 @@ def __setup_logging(name, to_file):
         logger.info('logging to {}'.format(log_file))
 
 
-def train_fet():
-    __setup_logging('train_fet', True)
+def predict_results(estimator, input_fn):
+    for i, pred in enumerate(estimator.predict(input_fn)):
+        print(pred)
+        if i > 2:
+            break
+
+
+def train_fet(block_records_path, block_emb_file, model_dir, mode, log_file_name):
+    __setup_logging(log_file_name, mode == 'train')
+    logging.info(block_records_path)
+    logging.info(block_emb_file)
+    logging.info(model_dir)
+    logging.info(mode)
     # logfile = os.path.join(output_dir, 'log/realm_et.log')
     # logger = tf.get_logger()
     # # logger.setLevel('ERROR')
@@ -566,11 +574,9 @@ def train_fet():
     tf_random_seed = 1355
     embedder_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
     reader_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/bert')
-    # block_records_path = os.path.join(config.DATA_DIR, 'realm_data/realm_blocks/blocks_2m.tfr')
-    block_records_path = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m.tfr')
     vocab_file = os.path.join(reader_module_path, 'assets/vocab.txt')
     # model_dir = os.path.join(config.OUTPUT_DIR, 'tmp/tmpmodels')
-    model_dir = os.path.join(output_dir, 'etdmodels')
+    # model_dir = os.path.join(output_dir, 'etdmodels')
     type_vocab_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/ontology/types.txt')
 
     tokenizer = tokenization.FullTokenizer(vocab_file, do_lower_case=True)
@@ -590,7 +596,7 @@ def train_fet():
         'block_records_path': block_records_path,
     }
 
-    init_pre_load_data(embedder_module_path)
+    init_pre_load_data(block_emb_file)
     # print(pre_load_data['np_db'].shape)
     params['num_block_records'] = pre_load_data['np_db'].shape[0]
     # exit()
@@ -622,4 +628,7 @@ def train_fet():
         )
 
     # estimator.evaluate(input_data.input_fn_test)
-    tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+    if mode == 'train':
+        tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+    elif mode == 'predict':
+        predict_results(estimator, input_data.input_fn_test)

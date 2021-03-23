@@ -8,106 +8,8 @@ from locbert import optimization
 from exp import fetexp
 from absl import app
 from absl import flags
-
-
-def train_input_fn():
-    return 0
-
-
-def model_fn(features, labels, mode, params):
-    reader_module_path = '/data/hldai/data/realm_data/cc_news_pretrained/locbert'
-
-    train_op = None
-    loss = tf.constant(337)
-    # a = tf.constant([2, 3, 4])
-    # b = tf.constant([2, 5, 4])
-    # predictions = a + b
-    eval_metric_ops = None
-
-    reader_module = hub.Module(
-        reader_module_path,
-        tags={"train"} if mode == tf.estimator.ModeKeys.TRAIN else {},
-        trainable=True)
-
-    token_ids = tf.constant([[101, 2002, 2003, 1037, 3836, 1012, 102]], dtype=tf.int32)
-    mask = tf.constant([[1, 1, 1, 1, 1, 1, 1]], dtype=tf.int32)
-    segment_ids = tf.constant([[0, 0, 0, 0, 0, 0, 0]], dtype=tf.int32)
-
-    concat_outputs = reader_module(
-        dict(
-            input_ids=token_ids,
-            input_mask=mask,
-            segment_ids=segment_ids),
-        signature="tokens",
-        as_dict=True)
-
-    concat_token_emb = concat_outputs["sequence_output"]
-    predictions = concat_token_emb
-
-    if mode == tf.estimator.ModeKeys.TRAIN:
-        train_op = optimization.create_optimizer(
-            loss=loss,
-            init_lr=params["learning_rate"],
-            num_train_steps=params["num_train_steps"],
-            num_warmup_steps=min(10000, max(100,
-                                            int(params["num_train_steps"] / 10))),
-            use_tpu=False)
-
-    return tf.estimator.EstimatorSpec(
-        mode=mode,
-        loss=loss,
-        train_op=train_op,
-        predictions=predictions,
-        eval_metric_ops=eval_metric_ops)
-
-
-def run_train():
-    model_dir = '/data/hldai/data/tmp/tmpmodels'
-    batch_size = 2
-    num_train_steps = 10
-    save_checkpoints_steps = None
-    tf_random_seed = 155
-    keep_checkpoint_max = 5
-    params = dict()
-    params["batch_size"] = batch_size
-    params["learning_rate"] = 1e-5
-    params["num_train_steps"] = 10
-
-    run_config = tf.estimator.RunConfig(
-        model_dir=model_dir,
-        tf_random_seed=tf_random_seed,
-        save_checkpoints_steps=save_checkpoints_steps,
-        keep_checkpoint_max=keep_checkpoint_max)
-
-    estimator = tf.estimator.Estimator(
-        config=run_config,
-        model_fn=model_fn,
-        params=params,
-        model_dir=model_dir)
-
-    train_spec = tf.estimator.TrainSpec(
-        input_fn=train_input_fn,
-        max_steps=num_train_steps)
-
-    # estimator.train(input_fn=train_input_fn)
-    predictor = estimator.predict(input_fn=train_input_fn)
-    for i, p in enumerate(predictor):
-        print(p)
-        if i > 0:
-            break
-    # tf.estimator.train(
-    #     estimator=estimator,
-    #     train_spec=train_spec)
-
-
-def init_universal_logging(logfile='main.log', mode='a', to_stdout=True):
-    handlers = list()
-    if logfile is not None:
-        handlers.append(logging.FileHandler(logfile, mode=mode))
-    if to_stdout:
-        handlers.append(logging.StreamHandler())
-    logging.basicConfig(format='%(asctime)s %(filename)s:%(lineno)s %(levelname)s - %(message)s',
-                        datefmt='%y-%m-%d %H:%M:%S', handlers=handlers, level=logging.INFO)
+from utils import utils
+import config
 
 
 def main(_):
@@ -116,8 +18,24 @@ def main(_):
 
 
 if __name__ == "__main__":
+    args = utils.parse_idx_device_args()
+
+    output_dir = os.path.join(config.OUTPUT_DIR, 'realm_output')
+
+    block_records_path = os.path.join(config.DATA_DIR, 'realm_data/realm_blocks/blocks_2m.tfr')
+    block_emb_file = os.path.join(config.DATA_DIR, 'realm_data/realm_blocks/block_emb_2m.pkl')
+    model_dir = os.path.join(output_dir, 'models')
+
+    et_block_records_path = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m.tfr')
+    et_block_emb_file = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m-emb.pkl')
+    et_model_dir = os.path.join(output_dir, 'etdmodels')
     # tf.disable_v2_behavior()
     # app.run(main)
     # init_universal_logging(None)
     # tf.get_logger().setLevel('INFO')
-    fetexp.train_fet()
+    if args.idx == 0:
+        fetexp.train_fet(block_records_path, block_emb_file, model_dir, 'train', 'train_fet_0')
+    elif args.idx == 1:
+        fetexp.train_fet(et_block_records_path, et_block_emb_file, model_dir, 'train', 'train_fet_1')
+    elif args.idx == 2:
+        fetexp.train_fet(block_records_path, block_emb_file, model_dir, 'predict', None)
