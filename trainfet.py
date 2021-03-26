@@ -39,3 +39,5 @@ if __name__ == "__main__":
         fetexp.train_fet(et_block_records_path, et_block_emb_file, model_dir, 'train', 'train_fet_1')
     elif args.idx == 2:
         fetexp.train_fet(block_records_path, block_emb_file, model_dir, 'predict', None)
+    elif args.idx == 3:
+        fetexp.train_fet(et_block_records_path, et_block_emb_file, et_model_dir, 'predict', None)

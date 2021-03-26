@@ -124,10 +124,16 @@ def scann_test():
 
 
 import tensorflow as tf
-v = tf.constant([[1.0], [1.0]])
-v1 = tf.constant([[3.4, 23], [7.1, 8.2]])
-print(tf.concat((v, v1), axis=1))
+# v = tf.constant([[1.0], [1.0]])
+# v1 = tf.constant([[3.4, 23], [7.1, 8.2]])
+# print(tf.concat((v, v1), axis=1))
 # scann_test()
+
+v = tf.ragged.range(tf.constant([2, 5, 3], tf.int32))
+print(v)
+v = tf.expand_dims(v, 2)
+v = v.merge_dims(1, 2)
+print(v)
 #
 # from orqa.utils import bert_utils
 #
