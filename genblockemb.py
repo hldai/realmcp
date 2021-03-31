@@ -9,7 +9,7 @@ def select_texts():
     import random
 
     # 76397770 sentences
-    output_block_records_path = '/data/hldai/data/ultrafine/rlm_fet/enwiki-20151002-type-sents-2m.tfr'
+    output_block_records_path = '/data/hldai/data/ultrafine/rlm_fet/enwiki-20151002-type-sents-2m-tmp.tfr'
     n_keep = 2000000
     n_total = 76397770
     rand_rate = n_keep / n_total
@@ -177,18 +177,9 @@ def check_block_emb():
     print(block_emb.shape)
 
 
-# select_texts()
+select_texts()
 # gen_embs()
 # check_block_emb()
-
-# print(tf.constant('foo').numpy())
-# bl = tf.train.BytesList(value=['foo'.encode('utf-8')])
-# print(type(bl))
-# output_block_records_path = 'd:/data/tmp/tmp.tfr'
-# with tf.io.TFRecordWriter(output_block_records_path) as file_writer:
-#     file_writer.write(tf.constant('foo').numpy())
-#     file_writer.write(tf.constant('car').numpy())
-# print(tf.io.serialize_tensor('foo'))
 
 # block_records_path = os.path.join(config.DATA_DIR, 'realm_data/realm_blocks/blocks_2m.tfr')
 # block_records_path = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m.tfr')
