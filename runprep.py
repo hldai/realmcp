@@ -1,6 +1,7 @@
 import os
 import tensorflow as tf
 import numpy as np
+from prep import prepz
 from locbert import tokenization
 import config
 from utils import datautils
@@ -165,6 +166,7 @@ def sample_from_realm_blocks():
 # save_doc_tok_id_seqs_to_parts()
 # save_doc_tok_id_seqs_whole()
 # save_doc_tok_id_seqs_singleall()
+prepz.check_sents()
 
 
 # blocks_dataset = tf.data.TFRecordDataset(

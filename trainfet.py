@@ -33,10 +33,11 @@ if __name__ == "__main__":
     # app.run(main)
     # init_universal_logging(None)
     # tf.get_logger().setLevel('INFO')
+    log_name = 'train_fet_{}'.format(args.idx)
     if args.idx == 0:
-        fetexp.train_fet(block_records_path, block_emb_file, model_dir, 'train', 'train_fet_0')
+        fetexp.train_fet(block_records_path, block_emb_file, model_dir, 'train', log_name)
     elif args.idx == 1:
-        fetexp.train_fet(et_block_records_path, et_block_emb_file, model_dir, 'train', 'train_fet_1')
+        fetexp.train_fet(et_block_records_path, et_block_emb_file, et_model_dir, 'train', log_name)
     elif args.idx == 2:
         fetexp.train_fet(block_records_path, block_emb_file, model_dir, 'predict', None)
     elif args.idx == 3:

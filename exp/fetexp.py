@@ -440,7 +440,7 @@ class InputData:
             for i, line in enumerate(f):
                 x = json.loads(line)
                 mstr = x['mention_span']
-                text = '{} {} {}'.format(
+                text = '{} [MASK] such as {} {}'.format(
                     ' '.join(x['left_context_token']), mstr, ' '.join(x['right_context_token']))
                 mstr_sep_text = '{} [SEP] {} {} {}'.format(
                     mstr, ' '.join(x['left_context_token']), mstr, ' '.join(x['right_context_token']))
