@@ -166,7 +166,8 @@ def sample_from_realm_blocks():
 # save_doc_tok_id_seqs_to_parts()
 # save_doc_tok_id_seqs_whole()
 # save_doc_tok_id_seqs_singleall()
-prepz.check_sents()
+# prepz.check_sents()
+prepz.filter_not_noun_sents()
 
 
 # blocks_dataset = tf.data.TFRecordDataset(

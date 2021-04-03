@@ -19,6 +19,8 @@ output_dir = os.path.join(config.OUTPUT_DIR, 'realm_output')
 log_dir = os.path.join(config.OUTPUT_DIR, 'realm_output/log')
 data_dir = config.DATA_DIR
 
+orqa_ops = tf.load_op_library('exp/rlmfetops.so')
+
 # num_block_records = 13353718
 # num_block_records = 2000000
 # n_block_rec_parts = [2670743, 5341486, 8012229, 10682972, 13353718]
@@ -363,6 +365,11 @@ def model_fn(features, labels, mode, params):
             'f1': (f1, tf.group(p_op, r_op))
         }
 
+    # tmp_blocks = tf.constant(['i you date', 'sh ij ko', 'day in day'])
+    # blocks_has_answer = orqa_ops.has_answer(blocks=tmp_blocks, answers=features['labels'][0])
+    # tmp_blocks = tf.constant([[1, 2], [3, 4]], tf.int32)
+    blocks_has_answer = orqa_ops.zero_out(features['tmp'])
+
     train_logging_hook = tf.estimator.LoggingTensorHook({
         'batch_id': features['batch_id'],
         'loss': loss,
@@ -373,9 +380,15 @@ def model_fn(features, labels, mode, params):
     logging_hook = tf.estimator.LoggingTensorHook({
         'batch_id': features['batch_id'],
         'loss': loss,
-        # 'pred': tf.reduce_mean(predictions)
+        # 'pred': tf.reduce_mean(predictions),
         # 'pred': log_probs,
         'tmp': tf.reduce_sum(dense_weights),
+    }, every_n_iter=eval_log_steps)
+    pred_logging_hook = tf.estimator.LoggingTensorHook({
+        'labels': features['labels'][0],
+        'ha': blocks_has_answer,
+        'hatmp': features['tmp'],
+        # 'bl': retrieved_blocks
     }, every_n_iter=eval_log_steps)
 
     predictions = {'probs': probs, 'text_ids': features['text_ids'], 'block_ids': retrieved_block_ids}
@@ -387,6 +400,7 @@ def model_fn(features, labels, mode, params):
         predictions=predictions,
         training_hooks=[train_logging_hook],
         evaluation_hooks=[logging_hook],
+        prediction_hooks=[pred_logging_hook],
         eval_metric_ops=eval_metric_ops,
         scaffold=scaffold)
 
@@ -435,7 +449,7 @@ class InputData:
         batch_size = self.batch_size
         texts = list()
         mstr_sep_texts = list()
-        all_labels = list()
+        all_label_strs, all_labels = list(), list()
         with open(data_file, encoding='utf-8') as f:
             for i, line in enumerate(f):
                 x = json.loads(line)
@@ -451,6 +465,7 @@ class InputData:
                 tids = [self.type_id_dict.get(t, -1) for t in labels]
                 tids = [tid for tid in tids if tid > -1]
                 # if i > 5:
+                all_label_strs.append(labels)
                 all_labels.append(tids)
                 # if len(texts) >= 12:
                 #     break
@@ -458,7 +473,7 @@ class InputData:
 
         def tok_id_seq_gen():
             text_ids, tok_id_seqs, tok_id_seqs_repeat = list(), list(), list()
-            y_vecs = list()
+            label_strs, y_vecs = list(), list()
             for _ in range(n_repeat):
                 batch_id = 0
                 for text_idx, text in enumerate(texts):
@@ -474,6 +489,7 @@ class InputData:
                         tok_id_seqs_repeat.append(fet_tok_id_seq)
                     text_ids.append(text_idx)
                     y_vecs.append(to_one_hot(all_labels[text_idx], self.n_types))
+                    label_strs.append(all_label_strs[text_idx])
 
                     if len(tok_id_seqs) >= batch_size:
                         # tok_id_seq_batch, input_mask = get_padded_bert_input(tok_id_seqs)
@@ -483,9 +499,12 @@ class InputData:
                         # yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, y_vecs
                         yield {'batch_id': batch_id, 'tok_id_seq_batch': tok_id_seq_batch,
                                'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged,
-                               'text_ids': text_ids
+                               'text_ids': text_ids,
+                               'labels': tf.constant(label_strs),
+                               'tmp': tf.constant([[1, 2], [3, 4]], tf.int32),
                                }, y_vecs
                         text_ids, tok_id_seqs, tok_id_seqs_repeat, y_vecs = list(), list(), list(), list()
+                        label_strs = list()
                         batch_id += 1
                         # y_vecs = list()
                 if len(tok_id_seqs) > 0:
@@ -496,7 +515,9 @@ class InputData:
                     # yield {'tok_id_seq_batch': tok_id_seq_batch, 'input_mask': input_mask}, y_vecs
                     yield {'batch_id': batch_id, 'tok_id_seq_batch': tok_id_seq_batch,
                            'tok_id_seqs_repeat': tok_id_seqs_repeat_ragged,
-                           'text_ids': text_ids
+                           'text_ids': text_ids,
+                           'labels': tf.constant(label_strs),
+                           'tmp': tf.constant([[1, 2], [3, 4]], tf.int32),
                            }, y_vecs
 
         # for v in iter(tok_id_seq_gen()):
@@ -509,6 +530,8 @@ class InputData:
                     'tok_id_seq_batch': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1),
                     'tok_id_seqs_repeat': tf.RaggedTensorSpec(dtype=tf.int32, ragged_rank=1),
                     'text_ids': tf.TensorSpec(shape=None, dtype=tf.int32),
+                    'labels': tf.TensorSpec(shape=None, dtype=tf.string),
+                    'tmp': tf.TensorSpec(shape=None, dtype=tf.int32),
                     # 'block_emb': tf.TensorSpec(shape=block_emb_shape, dtype=tf.float32)},
                 },
                 tf.TensorSpec(shape=None, dtype=tf.float32)))
@@ -596,6 +619,7 @@ def train_fet(block_records_path, block_emb_file, model_dir, mode, log_file_name
         'block_records_path': block_records_path,
     }
 
+    assert batch_size == 1
     init_pre_load_data(block_emb_file)
     # print(pre_load_data['np_db'].shape)
     params['num_block_records'] = pre_load_data['np_db'].shape[0]

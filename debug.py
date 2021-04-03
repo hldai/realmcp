@@ -124,16 +124,15 @@ def scann_test():
 
 
 import tensorflow as tf
-# v = tf.constant([[1.0], [1.0]])
-# v1 = tf.constant([[3.4, 23], [7.1, 8.2]])
-# print(tf.concat((v, v1), axis=1))
-# scann_test()
 
-v = tf.ragged.range(tf.constant([2, 5, 3], tf.int32))
-print(v)
-v = tf.expand_dims(v, 2)
-v = v.merge_dims(1, 2)
-print(v)
+orqa_ops = tf.load_op_library('exp/rlmfetops.so')
+print(orqa_ops.zero_out([[1, 2], [3, 4]]))
+# tmp_blocks = tf.constant(['i you date', 'sh ij ko', 'day in day'])
+# answers = tf.constant(["date", 'day'])
+# result = orqa_ops.has_answer(blocks=tmp_blocks, answers=answers)
+# print(tf.cast(result, tf.int32))
+# print(result)
+
 #
 # from orqa.utils import bert_utils
 #
@@ -172,50 +171,3 @@ print(v)
 # (orig_tokens, block_token_map, block_token_ids, blocks) = (
 #     bert_utils.tokenize_with_original_mapping(blocks, tokenizer))
 # print(block_token_ids)
-
-def pad_sep_to_tensor(tok_id_seqs):
-    reach_max_len = tf.equal(tok_id_seqs[:, -1], tf.constant(0, tf.int32))
-    reach_max_len = 1 - tf.cast(reach_max_len, tf.int32)
-    reach_max_len = tf.reshape(reach_max_len, (-1, 1))
-    seps_tensor = reach_max_len * sep_tok_id
-    # print(seps_tensor)
-    # print(tf.concat((q_doc_tok_id_seqs, seps_tensor), axis=1))
-    tok_id_seqs = tf.concat((tok_id_seqs, seps_tensor), axis=1)
-
-    is_zero = tf.cast(tf.equal(tok_id_seqs, tf.constant(0)), tf.int32)
-    # print(is_zero)
-    is_zero_cumsum = tf.cumsum(is_zero, axis=1)
-    sep_tensor = tf.cast(tf.equal(is_zero_cumsum, tf.constant(1)), tf.int32) * sep_tok_id
-    tok_id_seqs += sep_tensor
-    return tok_id_seqs
-
-
-sep_tok_id = 102
-# vals = tf.constant([[2, 3, 0, 0, 0], [1, 2, 3, 8, 5], [2, 3, 7, 1, 0]], tf.int32)
-# print(vals)
-# print(pad_sep_to_tensor(vals))
-# labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]], tf.float32)
-# preds = tf.constant([[0.9, 0.7, 0.3, 0.8], [0.9, 0.1, 0.1, 0.7]], tf.float32)
-# preds_for_true_pos = preds * labels
-# print(preds_for_true_pos)
-# correct_pos = tf.cast(tf.less(tf.constant(0.5), preds_for_true_pos), tf.float32)
-# print(correct_pos)
-# n_corrects = tf.reduce_sum(correct_pos, axis=1)
-# print(n_corrects)
-
-# 3-1. Choose which unit is used to use for the operation.
-# import tensorflow as tf
-# from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
-# from tensorflow.python.training import py_checkpoint_reader
-#
-#
-# latest_ckp = '/data/hldai/data/tmp/tmpmodels/model.ckpt-3'
-# # print_tensors_in_checkpoint_file(latest_ckp, all_tensors=True, tensor_name='')
-#
-# # try:
-# reader = py_checkpoint_reader.NewCheckpointReader(latest_ckp)
-# var_to_shape_map = reader.get_variable_to_shape_map()
-# var_to_dtype_map = reader.get_variable_to_dtype_map()
-# for key, value in sorted(var_to_shape_map.items()):
-#     print("tensor: %s (%s) %s" % (key, var_to_dtype_map[key].name, value))
-#     print(type(reader.get_tensor(key)))
