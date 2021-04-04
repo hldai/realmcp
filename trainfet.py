@@ -12,11 +12,6 @@ from utils import utils
 import config
 
 
-def main(_):
-    # init_universal_logging(None)
-    fetexp.train_fet()
-
-
 if __name__ == "__main__":
     args = utils.parse_idx_device_args()
 

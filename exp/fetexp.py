@@ -7,7 +7,6 @@ import tensorflow_hub as hub
 import tensorflow as tf
 import tensorflow_probability as tfp
 import scann
-from locbert import tokenization
 # from bert import tokenization
 from locbert import tokenization, optimization
 from orqa.utils import scann_utils
@@ -19,7 +18,7 @@ output_dir = os.path.join(config.OUTPUT_DIR, 'realm_output')
 log_dir = os.path.join(config.OUTPUT_DIR, 'realm_output/log')
 data_dir = config.DATA_DIR
 
-orqa_ops = tf.load_op_library('exp/rlmfetops.so')
+# orqa_ops = tf.load_op_library('exp/rlmfetops.so')
 
 # num_block_records = 13353718
 # num_block_records = 2000000
@@ -73,57 +72,6 @@ def load_blocks_from_pkl():
     blocks = tf.ragged.constant(blocks_list, dtype=tf.int32)
     print('blocks list to ragged')
     return blocks
-
-
-def load_blocks_from_ragged_list(num_block_records):
-    dataset_path = os.path.join(config.DATA_DIR, 'tmp/blocks_tok_id_seqs_l128_all.tfdata')
-    dataset = tf.data.experimental.load(
-        dataset_path,
-        element_spec=tf.RaggedTensorSpec(ragged_rank=1, dtype=tf.int32))
-    print('dataset loaded')
-    dataset = dataset.batch(num_block_records)
-    print('batched')
-    blocks = tf.data.experimental.get_single_element(dataset)
-    return blocks
-
-
-def retrieve_block_ids_dist(retriever_beam_size, question_emb):
-    np_db = pre_load_data['np_db']
-    retrieved_block_ids_list = list()
-    retrieved_block_embs_list = list()
-    block_embs = list()
-    searchers = list()
-    n_parts = 2
-    n_blocks = np_db.shape[0]
-    n_blocks_per_part = n_blocks // n_parts
-    print(n_blocks, 'BLOCKS', n_blocks_per_part, 'blocks per partition')
-
-    block_emb1 = tf.constant(np_db[0:2000000], tf.float32)
-    searcher1 = scann.scann_ops.builder(block_emb1, retriever_beam_size, "dot_product").tree(
-        num_leaves=1000, num_leaves_to_search=100, training_sample_size=100000).score_ah(
-        2, anisotropic_quantization_threshold=0.2).reorder(100).build()
-
-    # [1, retriever_beam_size]
-    retrieved_block_ids, _ = searcher1.search_batched(question_emb)
-    retrieved_block_embs = tf.gather(block_emb1, retrieved_block_ids)
-    retrieved_block_embs_list.append(retrieved_block_embs)
-    retrieved_block_ids_g = retrieved_block_ids
-    retrieved_block_ids_list.append(retrieved_block_ids_g)
-
-    block_emb2 = tf.constant(np.random.uniform(-1, 1, (2000000, 128)), tf.float32)
-    searcher2 = scann.scann_ops.builder(block_emb2, retriever_beam_size, "dot_product").tree(
-        num_leaves=1000, num_leaves_to_search=100, training_sample_size=100000).score_ah(
-        2, anisotropic_quantization_threshold=0.2).reorder(100).build()
-
-    # [1, retriever_beam_size]
-    retrieved_block_ids, _ = searcher2.search_batched(question_emb)
-    retrieved_block_embs = tf.gather(block_emb2, retrieved_block_ids)
-    retrieved_block_embs_list.append(retrieved_block_embs)
-    retrieved_block_ids_g = retrieved_block_ids
-    retrieved_block_ids_list.append(retrieved_block_ids_g)
-
-    return retrieved_block_embs_list[0], retrieved_block_ids_list[0], retrieved_block_embs_list[1]
-    # return retrieved_block_embs_list[0], retrieved_block_ids_list[0], None
 
 
 def retrieve(
@@ -368,7 +316,7 @@ def model_fn(features, labels, mode, params):
     # tmp_blocks = tf.constant(['i you date', 'sh ij ko', 'day in day'])
     # blocks_has_answer = orqa_ops.has_answer(blocks=tmp_blocks, answers=features['labels'][0])
     # tmp_blocks = tf.constant([[1, 2], [3, 4]], tf.int32)
-    blocks_has_answer = orqa_ops.zero_out(features['tmp'])
+    # blocks_has_answer = orqa_ops.zero_out(features['tmp'])
 
     train_logging_hook = tf.estimator.LoggingTensorHook({
         'batch_id': features['batch_id'],
@@ -386,8 +334,8 @@ def model_fn(features, labels, mode, params):
     }, every_n_iter=eval_log_steps)
     pred_logging_hook = tf.estimator.LoggingTensorHook({
         'labels': features['labels'][0],
-        'ha': blocks_has_answer,
-        'hatmp': features['tmp'],
+        # 'ha': blocks_has_answer,
+        # 'hatmp': features['tmp'],
         # 'bl': retrieved_blocks
     }, every_n_iter=eval_log_steps)
 
@@ -400,7 +348,7 @@ def model_fn(features, labels, mode, params):
         predictions=predictions,
         training_hooks=[train_logging_hook],
         evaluation_hooks=[logging_hook],
-        prediction_hooks=[pred_logging_hook],
+        # prediction_hooks=[pred_logging_hook],
         eval_metric_ops=eval_metric_ops,
         scaffold=scaffold)
 
