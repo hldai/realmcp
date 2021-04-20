@@ -124,9 +124,17 @@ def scann_test():
 
 
 import tensorflow as tf
+import config
 
-orqa_ops = tf.load_op_library('exp/rlmfetops.so')
-print(orqa_ops.zero_out([[1, 2], [3, 4]]))
+block_records_path = os.path.join(config.DATA_DIR, 'ultrafine/zoutput/webisa_full_uffilter.tfr')
+blocks_dataset = tf.data.TFRecordDataset(block_records_path, buffer_size=512 * 1024 * 1024)
+cnt = 0
+for i, v in enumerate(blocks_dataset):
+    cnt += 1
+    # print(v)
+    # if i > 3:
+    #     break
+print(cnt)
 # tmp_blocks = tf.constant(['i you date', 'sh ij ko', 'day in day'])
 # answers = tf.constant(["date", 'day'])
 # result = orqa_ops.has_answer(blocks=tmp_blocks, answers=answers)

@@ -116,12 +116,19 @@ def gen_emb_model_fn(features, labels, mode, params):
 def gen_embs():
     import numpy as np
 
-    output_emb_file = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m-emb.pkl')
-    block_records_path = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m.tfr')
     embedder_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/embedder')
     reader_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/bert')
-    params = {'n_blocks': 2000007, 'block_records_path': block_records_path, 'reader_module_path': reader_module_path,
+
+    # output_emb_file = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m-emb.pkl')
+    # block_records_path = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m.tfr')
+    # params = {'n_blocks': 2000007, 'block_records_path': block_records_path, 'reader_module_path': reader_module_path,
+    #           'embedder_module_path': embedder_module_path}
+
+    output_emb_file = os.path.join(config.DATA_DIR, 'ultrafine/zoutput/webisa_full_uffilter_emb.pkl')
+    block_records_path = os.path.join(config.DATA_DIR, 'ultrafine/zoutput/webisa_full_uffilter.tfr')
+    params = {'n_blocks': 1671143, 'block_records_path': block_records_path, 'reader_module_path': reader_module_path,
               'embedder_module_path': embedder_module_path}
+
     logger = tf.get_logger()
     logger.setLevel('INFO')
     logger.propagate = False
@@ -177,8 +184,8 @@ def check_block_emb():
     print(block_emb.shape)
 
 
-select_texts()
-# gen_embs()
+# select_texts()
+gen_embs()
 # check_block_emb()
 
 # block_records_path = os.path.join(config.DATA_DIR, 'realm_data/realm_blocks/blocks_2m.tfr')

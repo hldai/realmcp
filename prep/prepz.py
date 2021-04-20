@@ -164,3 +164,49 @@ def filter_not_noun_sents():
         #     break
     f.close()
     f_pos.close()
+
+
+def blocks_from_webisa():
+    import tensorflow as tf
+    import inflect
+
+    output_tfr_file = os.path.join(config.DATA_DIR, 'ultrafine/zoutput/webisa_full_uffilter.tfr')
+    output_labels_file = os.path.join(config.DATA_DIR, 'ultrafine/zoutput/webisa_full_uffilter_labels.txt')
+    wia_file = os.path.join(config.DATA_DIR, 'weakz/webisa_context_full.txt')
+    uf_type_vocab_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/ontology/types.txt')
+    type_vocab, type_id_dict = datautils.load_vocab_file(uf_type_vocab_file)
+    filter_types = {'person', 'people', 'man', 'thing', 'stuff', 'location', 'organization',
+                    'men', 'things', 'locations', 'organizations'}
+
+    inflect_eng = inflect.engine()
+    all_type_terms_dict = {t.replace('_', ' '): t for t in type_vocab}
+    for t in type_vocab:
+        t = t.replace('_', ' ')
+        tp = inflect_eng.plural(t)
+        if tp not in all_type_terms_dict:
+            all_type_terms_dict[tp] = t
+
+    cnt, filter_cnt = 0, 0
+    keep_cnt = 0
+    f = open(wia_file, encoding='utf-8')
+    foutl = open(output_labels_file, 'w', encoding='utf-8')
+    with tf.io.TFRecordWriter(output_tfr_file) as file_writer:
+        for i, line in enumerate(f):
+            cnt += 1
+            # print(line.strip())
+            parts = line.strip().split('\t')
+            hyp_term = parts[1].strip()
+            label = all_type_terms_dict.get(hyp_term, None)
+            if label is None:
+                continue
+            if hyp_term in filter_types:
+                filter_cnt += 1
+                continue
+
+            # print(hyp_term, '*', parts[-1])
+            keep_cnt += 1
+            file_writer.write(tf.constant(parts[-1].strip()).numpy())
+            foutl.write('{}\n'.format(label))
+    f.close()
+    foutl.close()
+    print(keep_cnt, cnt)
