@@ -210,3 +210,7 @@ def blocks_from_webisa():
     f.close()
     foutl.close()
     print(keep_cnt, cnt)
+
+
+def part_blocks_from_origin():
+    pass

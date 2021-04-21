@@ -16,3 +16,8 @@ def load_pickle_data(filename):
 def save_pickle_data(data, filename):
     with open(filename, 'wb') as f:
         pickle.dump(data, f, 4)
+
+
+def read_json_objs(filename):
+    with open(filename, encoding='utf-8') as f:
+        return [json.loads(line) for line in f]

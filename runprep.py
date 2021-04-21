@@ -168,4 +168,5 @@ def sample_from_realm_blocks():
 # save_doc_tok_id_seqs_singleall()
 # prepz.check_sents()
 # prepz.filter_not_noun_sents()
-prepz.blocks_from_webisa()
+# prepz.blocks_from_webisa()
+prepz.part_blocks_from_origin()

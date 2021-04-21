@@ -119,7 +119,7 @@ def retrieve(
     np_db = pre_load_data['np_db']
     block_emb = tf.constant(np_db)
     searcher = scann.scann_ops.builder(block_emb, retriever_beam_size, "dot_product").tree(
-        num_leaves=1000, num_leaves_to_search=100, training_sample_size=100000).score_ah(
+        num_leaves=1000, num_leaves_to_search=200, training_sample_size=100000).score_ah(
         2, anisotropic_quantization_threshold=0.2).reorder(100).build()
 
     # [1, retriever_beam_size]
@@ -159,7 +159,7 @@ def retrieve(
 
     print('blocks obtained')
 
-    return scaffold, retrieved_block_ids, retrieved_blocks, retrieved_logits
+    return scaffold, retrieved_block_ids, retrieved_blocks, retrieved_logits, question_emb
     # return scaffold, retrieved_block_ids, retrieved_blocks, retrieved_logits, retrieved_block_emb1
 
 
@@ -178,6 +178,182 @@ def pad_sep_to_tensor(tok_id_seqs, sep_tok_id):
     sep_tensor = tf.cast(tf.equal(is_zero_cumsum, tf.constant(1)), tf.int32) * sep_tok_id
     tok_id_seqs += sep_tensor
     return tok_id_seqs
+
+
+def get_one_hot_label_vecs(labels, n_types):
+    ones_add = tf.ones_like(labels, tf.float32)
+
+    n_samples = tf.shape(labels)[0]
+    # print(tf.expand_dims(vals, 1))
+    # print(tf.range(n_vals))
+    idxs = tf.concat((tf.expand_dims(tf.range(n_samples), 1), tf.expand_dims(labels, 1)), axis=1)
+    # print(idxs)
+    label_vecs = tf.zeros((n_samples, n_types), tf.float32)
+    label_vecs = tf.tensor_scatter_nd_update(label_vecs, idxs, ones_add)
+    # print(oh_vecs)
+    return label_vecs
+
+
+def model_fn_zlabels(features, labels, mode, params):
+    # print('MMMMMMMMMMMMMMMMMModel_fn', mode)
+    embedder_module_path = params['embedder_module_path']
+    reader_module_path = params['reader_module_path']
+    # embedder_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/embedder')
+    # reader_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/bert')
+    lr = params['lr']
+    num_train_steps = params['num_train_steps']
+    max_seq_len = params['max_seq_len']
+    bert_dim = params['bert_dim']
+    n_types = params['n_types']
+    sep_tok_id = params['sep_tok_id']
+    retriever_beam_size = params['retriever_beam_size']
+    block_records_path = params['block_records_path']
+    num_block_records = params['num_block_records']
+    train_log_steps = params['train_log_steps']
+    eval_log_steps = params['eval_log_steps']
+
+    # token_ids = tf.constant([[101, 2002, 2003, 1037, 3836, 1012, 102]], dtype=tf.int32)
+    tok_id_seq_batch_tensor = features['tok_id_seq_batch'].to_tensor()
+    input_mask = 1 - tf.cast(tf.equal(tok_id_seq_batch_tensor, tf.constant(0)), tf.int32)
+
+    block_labels_np = pre_load_data['labels']
+    block_labels = tf.constant(block_labels_np, tf.int32)
+
+    # input_mask = features['input_mask']
+    with tf.device("/cpu:0"):
+        # retriever_outputs = retrieve(tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
+        scaffold, retrieved_block_ids, retrieved_blocks, zx_logits, question_emb = retrieve(
+            tok_id_seq_batch_tensor, input_mask, embedder_module_path, mode, block_records_path,
+            retriever_beam_size, num_block_records)
+        # scaffold, question_emb, retrieved_block_ids = retrieve(
+        #     tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
+
+    retrieved_labels = tf.gather(block_labels, retrieved_block_ids[0])
+    retrieved_label_vecs = get_one_hot_label_vecs(retrieved_labels, n_types)
+
+    tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
+    block_tok_id_seqs = tokenizer.tokenize(retrieved_blocks)
+    block_tok_id_seqs = tf.cast(
+        block_tok_id_seqs.merge_dims(2, 3).to_tensor(), tf.int32)
+    # batch_size = tf.shape(tok_id_seq_batch_tensor)[0]
+    blocks_max_seq_len = tf.shape(block_tok_id_seqs)[-1]
+    block_tok_id_seqs_flat = tf.reshape(block_tok_id_seqs, (-1, blocks_max_seq_len))
+
+    zx_logits = tf.reshape(zx_logits, (-1, retriever_beam_size))
+    log_softmax_zx_logits = tf.nn.log_softmax(zx_logits, axis=1)
+
+    # labels0 = tf.reduce_sum(retrieved_label_vecs[0] * tf.range(n_types, dtype=tf.float32))
+    # labels0_sum = tf.reduce_sum(retrieved_label_vecs[0])
+
+    # yzx_logits = tf.matmul(qd_reps, dense_weights)
+    # # weight_sum = tf.reduce_sum(dense_layer.weights)
+    # yzx_logits = tf.reshape(yzx_logits, (-1, retriever_beam_size, n_types))
+    # log_sig_yzx_logits = tf.math.log_sigmoid(yzx_logits)
+    # z_log_probs = log_sig_yzx_logits + tf.expand_dims(log_softmax_zx_logits, 2)
+    # log_probs = tf.reduce_logsumexp(z_log_probs, axis=1)
+    # log_neg_probs = tfp.math.log1mexp(log_probs)
+
+    # prob_sum = tf.math.exp(log_probs) + tf.math.exp(log_neg_probs)
+
+    # kernel_initializer = tf.truncated_normal_initializer(stddev=0.02)
+    # projection = tf.layers.dense(
+    #     qd_reps,
+    #     bert_dim,
+    #     kernel_initializer=kernel_initializer)
+    # yzx_logits =
+
+    # probs = tf.exp(log_probs)
+    # loss = tf.reduce_mean(predictions)
+
+    loss = None
+    eval_metric_ops = None
+    train_op = None
+    label_hits = None
+    if mode != tf.estimator.ModeKeys.PREDICT:
+        retrieved_label_vecs = tf.reshape(retrieved_label_vecs, (-1, retriever_beam_size, n_types))
+        label_hits = tf.reduce_sum(retrieved_label_vecs * tf.expand_dims(labels, 1), axis=2)
+        label_hits = tf.cast(tf.less(tf.constant(0.5), label_hits), tf.float32)
+        loss_samples = -tf.reduce_sum(
+            label_hits * log_softmax_zx_logits + (1 - label_hits) * log_softmax_zx_logits, axis=1)
+        # loss_samples = -tf.reduce_sum(labels * log_probs + (1 - labels) * log_neg_probs, axis=1)
+        loss = tf.reduce_mean(loss_samples)
+        # loss = tf.reduce_mean(loss_samples) + 0.00001 * tf.reduce_mean(question_emb)
+        # loss = -tf.reduce_mean(log_softmax_zx_logits)
+
+        train_op = optimization.create_optimizer(
+            loss=loss,
+            init_lr=lr,
+            num_train_steps=num_train_steps,
+            num_warmup_steps=min(10000,
+                                 max(100, int(num_train_steps / 10))),
+            use_tpu=False)
+
+        small_constant = tf.constant(0.00001)
+        all_pred_label_vecs = tf.reduce_sum(retrieved_label_vecs, axis=1)
+        pos_preds = tf.cast(tf.less(tf.constant(0.5), all_pred_label_vecs), tf.float32)
+        # pos_preds = tf.cast(tf.less(tf.constant(0.5), probs), tf.float32)
+        n_pred_pos = tf.reduce_sum(pos_preds, axis=1) + small_constant
+        n_true_pos = tf.reduce_sum(labels, axis=1) + small_constant
+        n_corrects = tf.reduce_sum(pos_preds * labels, axis=1)
+        precision = tf.reduce_mean(n_corrects / n_pred_pos)
+        recall = tf.reduce_mean(n_corrects / n_true_pos)
+
+        p_mean, p_op = tf.compat.v1.metrics.mean(precision)
+        r_mean, r_op = tf.compat.v1.metrics.mean(recall)
+        f1 = 2 * p_mean * r_mean / (p_mean + r_mean + small_constant)
+
+        eval_metric_ops = {
+            # 'precision': tf.compat.v1.metrics.mean(precision),
+            # 'recall': tf.compat.v1.metrics.mean(recall)
+            'precision': (p_mean, p_op),
+            'recall': (r_mean, r_op),
+            'f1': (f1, tf.group(p_op, r_op))
+        }
+        # eval_metric_ops = None
+
+    # tmp_blocks = tf.constant(['i you date', 'sh ij ko', 'day in day'])
+    # blocks_has_answer = orqa_ops.has_answer(blocks=tmp_blocks, answers=features['labels'][0])
+    # tmp_blocks = tf.constant([[1, 2], [3, 4]], tf.int32)
+    # blocks_has_answer = orqa_ops.zero_out(features['tmp'])
+    label_hits_sum = tf.reduce_sum(label_hits) if label_hits is not None else None
+
+    train_logging_hook = tf.estimator.LoggingTensorHook({
+        'batch_id': features['batch_id'],
+        'loss': loss,
+        # 'ws': tf.reduce_sum(dense_weights),
+        # 'yzx_logits': tf.reduce_sum(yzx_logits),
+        'label_hits': label_hits_sum,
+        # 'tmp1': retrieved_labels,
+        # 'labels0': labels0,
+        # 'labels0_sum': labels0_sum,
+    }, every_n_iter=train_log_steps)
+    logging_hook = tf.estimator.LoggingTensorHook({
+        'batch_id': features['batch_id'],
+        'loss': loss,
+        # 'pred': tf.reduce_mean(predictions),
+        # 'pred': log_probs,
+        # 'tmp': tf.reduce_sum(dense_weights),
+    }, every_n_iter=eval_log_steps)
+    pred_logging_hook = tf.estimator.LoggingTensorHook({
+        'labels': features['labels'][0],
+        # 'ha': blocks_has_answer,
+        # 'hatmp': features['tmp'],
+        # 'bl': retrieved_blocks
+    }, every_n_iter=eval_log_steps)
+
+    # predictions = {'probs': probs, 'text_ids': features['text_ids'], 'block_ids': retrieved_block_ids}
+    predictions = {'text_ids': features['text_ids'], 'block_ids': retrieved_block_ids, 'qemb': question_emb}
+
+    return tf.estimator.EstimatorSpec(
+        mode=mode,
+        loss=loss,
+        train_op=train_op,
+        predictions=predictions,
+        training_hooks=[train_logging_hook],
+        evaluation_hooks=[logging_hook],
+        # prediction_hooks=[pred_logging_hook],
+        eval_metric_ops=eval_metric_ops,
+        scaffold=scaffold)
 
 
 def model_fn(features, labels, mode, params):
@@ -201,6 +377,10 @@ def model_fn(features, labels, mode, params):
     # token_ids = tf.constant([[101, 2002, 2003, 1037, 3836, 1012, 102]], dtype=tf.int32)
     tok_id_seq_batch_tensor = features['tok_id_seq_batch'].to_tensor()
     input_mask = 1 - tf.cast(tf.equal(tok_id_seq_batch_tensor, tf.constant(0)), tf.int32)
+
+    block_labels_np = pre_load_data.get('labels', None)
+    block_labels = tf.constant(block_labels_np, tf.int32) if block_labels_np is not None else None
+
     # input_mask = features['input_mask']
     with tf.device("/cpu:0"):
         # retriever_outputs = retrieve(tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
@@ -209,6 +389,9 @@ def model_fn(features, labels, mode, params):
             retriever_beam_size, num_block_records)
         # scaffold, question_emb, retrieved_block_ids = retrieve(
         #     tok_id_seq_batch, input_mask, embedder_module_path, mode, retriever_beam_size)
+
+    retrieved_labels = tf.gather(block_labels, retrieved_block_ids[0]) if block_labels is not None else None
+    retrieved_label_vecs = get_one_hot_label_vecs(retrieved_labels, n_types)
 
     tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
     block_tok_id_seqs = tokenizer.tokenize(retrieved_blocks)
@@ -255,12 +438,13 @@ def model_fn(features, labels, mode, params):
     # yzx_logits = dense_layer(qd_reps)
     dense_weights = tf.Variable(
         initial_value=np.random.uniform(-0.1, 0.1, (bert_dim, n_types)), trainable=True, dtype=tf.float32)
+
+    zx_logits = tf.reshape(zx_logits, (-1, retriever_beam_size))
+    log_softmax_zx_logits = tf.nn.log_softmax(zx_logits, axis=1)
+
     yzx_logits = tf.matmul(qd_reps, dense_weights)
     # weight_sum = tf.reduce_sum(dense_layer.weights)
     yzx_logits = tf.reshape(yzx_logits, (-1, retriever_beam_size, n_types))
-    zx_logits = tf.reshape(zx_logits, (-1, retriever_beam_size))
-
-    log_softmax_zx_logits = tf.nn.log_softmax(zx_logits, axis=1)
     log_sig_yzx_logits = tf.math.log_sigmoid(yzx_logits)
     z_log_probs = log_sig_yzx_logits + tf.expand_dims(log_softmax_zx_logits, 2)
     log_probs = tf.reduce_logsumexp(z_log_probs, axis=1)
@@ -323,7 +507,8 @@ def model_fn(features, labels, mode, params):
         'loss': loss,
         'ws': tf.reduce_sum(dense_weights),
         'yzx_logits': tf.reduce_sum(yzx_logits),
-        # 'tmp': tf.shape(qd_reps)
+        'tmp': retrieved_label_vecs,
+        'tmp1': retrieved_labels,
     }, every_n_iter=train_log_steps)
     logging_hook = tf.estimator.LoggingTensorHook({
         'batch_id': features['batch_id'],
@@ -404,6 +589,8 @@ class InputData:
                 mstr = x['mention_span']
                 text = '{} [MASK] such as {} {}'.format(
                     ' '.join(x['left_context_token']), mstr, ' '.join(x['right_context_token']))
+                # text = '{} {} {}'.format(
+                #     ' '.join(x['left_context_token']), mstr, ' '.join(x['right_context_token']))
                 mstr_sep_text = '{} [SEP] {} {} {}'.format(
                     mstr, ' '.join(x['left_context_token']), mstr, ' '.join(x['right_context_token']))
                 # print(text)
@@ -487,7 +674,7 @@ class InputData:
         return dataset
 
 
-def init_pre_load_data(block_emb_file):
+def init_pre_load_data(block_emb_file, block_labels_file, type_id_dict):
     # num_block_records = 13353718
     num_block_records = 2000000
     n_block_rec_parts = [2670743, 5341486, 8012229, 10682972, 13353718]
@@ -498,6 +685,15 @@ def init_pre_load_data(block_emb_file):
     # block_emb_file = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m-emb.pkl')
     # block_records_path = os.path.join(data_dir, 'realm_data/blocks.tfr')
     pre_load_data['np_db'] = datautils.load_pickle_data(block_emb_file)
+    pre_load_data['labels'] = None
+    if block_labels_file is not None:
+        z_labels = list()
+        with open(block_labels_file, encoding='utf-8') as f:
+            for i, line in enumerate(f):
+                label = line.strip()
+                tid = type_id_dict.get(label, 0)
+                z_labels.append(tid)
+        pre_load_data['labels'] = np.array(z_labels, np.int32)
 
 
 def __setup_logging(name, to_file):
@@ -515,13 +711,26 @@ def __setup_logging(name, to_file):
 
 
 def predict_results(estimator, input_fn):
+    results_file = os.path.join(config.DATA_DIR, 'tmp/uf_wia_results_200.txt')
+    qemb_file = os.path.join(config.DATA_DIR, 'realm_output/uf_test_qembs.pkl')
+    fout = open(results_file, 'w', encoding='utf-8')
+    qembs = list()
     for i, pred in enumerate(estimator.predict(input_fn)):
-        print(pred)
+        x = {'text_id': int(pred['text_ids']), 'block_ids': [int(v) for v in pred['block_ids']]}
+        qembs.append(pred['qemb'])
+        fout.write('{}\n'.format(json.dumps(x)))
+        # print(pred)
         if i > 2:
             break
+        if i % 100 == 0:
+            print(i)
+    fout.close()
+
+    qembs = np.array(qembs)
+    datautils.save_pickle_data(qembs, qemb_file)
 
 
-def train_fet(block_records_path, block_emb_file, model_dir, mode, log_file_name):
+def train_fet(block_records_path, block_emb_file, block_labels_file, model_dir, mode, log_file_name):
     __setup_logging(log_file_name, mode == 'train')
     logging.info(block_records_path)
     logging.info(block_emb_file)
@@ -561,18 +770,20 @@ def train_fet(block_records_path, block_emb_file, model_dir, mode, log_file_name
         'retriever_beam_size': retriever_beam_size, 'n_types': n_types,
         'sep_tok_id': sep_tok_id, 'embedder_module_path': embedder_module_path,
         'reader_module_path': reader_module_path, 'num_train_steps': num_train_steps,
-        'train_log_steps': 200,
+        'train_log_steps': 100,
         'eval_log_steps': 500,
         'num_block_records': 2000000,
         'block_records_path': block_records_path,
     }
 
     assert batch_size == 1
-    init_pre_load_data(block_emb_file)
+    init_pre_load_data(block_emb_file, block_labels_file, type_id_dict)
     # print(pre_load_data['np_db'].shape)
     params['num_block_records'] = pre_load_data['np_db'].shape[0]
     # exit()
     input_data = InputData(batch_size, tokenizer, types, type_id_dict, retriever_beam_size, n_train_repeat)
+
+    model_fn_use = model_fn if block_labels_file is None else model_fn_zlabels
 
     run_config = tf.estimator.RunConfig(
         model_dir=model_dir,
@@ -582,7 +793,7 @@ def train_fet(block_records_path, block_emb_file, model_dir, mode, log_file_name
         tf_random_seed=tf_random_seed)
     estimator = tf.estimator.Estimator(
         config=run_config,
-        model_fn=model_fn,
+        model_fn=model_fn_use,
         params=params,
         model_dir=model_dir)
     # estimator.train(input_fn)

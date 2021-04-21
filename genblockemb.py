@@ -1,5 +1,7 @@
 import os
 import gzip
+
+import numpy as np
 import tensorflow as tf
 import config
 from utils import datautils
@@ -56,7 +58,7 @@ def gen_emb_model_fn(features, labels, mode, params):
     block_records_path = params['block_records_path']
     reader_module_path = params['reader_module_path']
     embedder_path = params['embedder_module_path']
-    max_seq_len = 256
+    max_seq_len = 512
 
     blocks_dataset = tf.data.TFRecordDataset(
         block_records_path, buffer_size=512 * 1024 * 1024)
@@ -70,13 +72,14 @@ def gen_emb_model_fn(features, labels, mode, params):
     tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
     cls_token_id = tf.cast(vocab_lookup_table.lookup(tf.constant("[CLS]")), tf.int32)
     sep_token_id = tf.cast(vocab_lookup_table.lookup(tf.constant("[SEP]")), tf.int32)
+    title_tok_id_seq = tf.constant([[6522, 9138, 15759, 102] for _ in range(12)], tf.int32)
 
-    block_tok_id_seqs = tokenizer.tokenize(retrieved_blocks)
-    block_tok_id_seqs = tf.cast(
-        block_tok_id_seqs.merge_dims(1, 2).to_tensor(), tf.int32)
-    batch_size = tf.shape(block_tok_id_seqs)[0]
+    block_tok_id_seqs0 = tokenizer.tokenize(retrieved_blocks)
+    block_tok_id_seqs1 = tf.cast(
+        block_tok_id_seqs0.merge_dims(1, 2).to_tensor(), tf.int32)
+    batch_size = tf.shape(block_tok_id_seqs1)[0]
     cls_tok_ids = tf.ones([batch_size, 1], tf.int32) * cls_token_id
-    block_tok_id_seqs = tf.concat((cls_tok_ids, block_tok_id_seqs), axis=1)
+    block_tok_id_seqs = tf.concat((cls_tok_ids, title_tok_id_seq, block_tok_id_seqs1), axis=1)
     block_tok_id_seqs = block_tok_id_seqs[:, :max_seq_len - 1]
     block_tok_id_seqs = pad_sep_to_tensor(block_tok_id_seqs, sep_token_id)
     input_mask = 1 - tf.cast(tf.equal(block_tok_id_seqs, tf.constant(0)), tf.int32)
@@ -84,29 +87,38 @@ def gen_emb_model_fn(features, labels, mode, params):
     retriever_module = hub.Module(
         embedder_path,
         tags={"train"} if mode == tf.estimator.ModeKeys.TRAIN else {},
-        trainable=True)
+        trainable=False)
 
+    segment_ids = np.zeros((12, 288), dtype=np.int32)
+    for i in range(12):
+        segment_ids[i, 5:] = 1
+    segment_ids = tf.constant(segment_ids)
+    # segment_ids=tf.zeros_like(block_tok_id_seqs)
+    # print(retriever_module.get_signature_names())
+    # exit()
     # [1, projection_size]
     block_emb = retriever_module(
         inputs=dict(
             input_ids=block_tok_id_seqs,
             # input_mask=tf.ones_like(query_token_id_seqs),
             input_mask=input_mask,
-            segment_ids=tf.zeros_like(block_tok_id_seqs)),
+            segment_ids=segment_ids),
         signature="projected")
 
     predictions = block_emb
     loss = tf.constant(1.0)
     logging_hook = tf.estimator.LoggingTensorHook({
-        'id_seqs': block_emb,
-        'rb': retrieved_blocks
+        'block_ids': features['block_ids'],
+        'id_seqs': block_tok_id_seqs,
+        'id_seqs_shape': tf.shape(block_tok_id_seqs),
+        'id_seqs1': block_tok_id_seqs1[:, :5]
     }, every_n_iter=1)
     return tf.estimator.EstimatorSpec(
         mode=mode,
         loss=loss,
         train_op=None,
         predictions=predictions,
-        # prediction_hooks=[logging_hook],
+        prediction_hooks=[logging_hook],
         # training_hooks=[train_logging_hook],
         # evaluation_hooks=[logging_hook],
         # eval_metric_ops=eval_metric_ops
@@ -119,22 +131,27 @@ def gen_embs():
     embedder_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/embedder')
     reader_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/bert')
 
+    output_emb_file = os.path.join(config.DATA_DIR, 'tmp/blocks10.pkl')
+    block_records_path = os.path.join(config.DATA_DIR, 'tmp/blocks10.tfr')
+    params = {'n_blocks': 12, 'block_records_path': block_records_path, 'reader_module_path': reader_module_path,
+              'embedder_module_path': embedder_module_path}
+
     # output_emb_file = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m-emb.pkl')
     # block_records_path = os.path.join(config.DATA_DIR, 'ultrafine/rlm_fet/enwiki-20151002-type-sents-2m.tfr')
     # params = {'n_blocks': 2000007, 'block_records_path': block_records_path, 'reader_module_path': reader_module_path,
     #           'embedder_module_path': embedder_module_path}
 
-    output_emb_file = os.path.join(config.DATA_DIR, 'ultrafine/zoutput/webisa_full_uffilter_emb.pkl')
-    block_records_path = os.path.join(config.DATA_DIR, 'ultrafine/zoutput/webisa_full_uffilter.tfr')
-    params = {'n_blocks': 1671143, 'block_records_path': block_records_path, 'reader_module_path': reader_module_path,
-              'embedder_module_path': embedder_module_path}
+    # output_emb_file = os.path.join(config.DATA_DIR, 'ultrafine/zoutput/webisa_full_uffilter_emb.pkl')
+    # block_records_path = os.path.join(config.DATA_DIR, 'ultrafine/zoutput/webisa_full_uffilter.tfr')
+    # params = {'n_blocks': 1671143, 'block_records_path': block_records_path, 'reader_module_path': reader_module_path,
+    #           'embedder_module_path': embedder_module_path}
 
     logger = tf.get_logger()
     logger.setLevel('INFO')
     logger.propagate = False
 
     def input_fn():
-        batch_size = 16
+        batch_size = 14
 
         def data_gen():
             block_ids = list()
@@ -168,6 +185,9 @@ def gen_embs():
 
     embs_list = list()
     for i, v in enumerate(estimator.predict(input_fn)):
+        if i == 0:
+            print(v)
+            break
         embs_list.append(v)
         # print(i, v)
         # if i > 10:

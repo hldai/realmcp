@@ -125,16 +125,57 @@ def scann_test():
 
 import tensorflow as tf
 import config
+# import numpy as np
+# from utils import datautils, bert_utils
 
-block_records_path = os.path.join(config.DATA_DIR, 'ultrafine/zoutput/webisa_full_uffilter.tfr')
-blocks_dataset = tf.data.TFRecordDataset(block_records_path, buffer_size=512 * 1024 * 1024)
-cnt = 0
-for i, v in enumerate(blocks_dataset):
-    cnt += 1
-    # print(v)
-    # if i > 3:
-    #     break
-print(cnt)
+# reader_module_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/bert')
+# tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
+# print(vocab_lookup_table.lookup(tf.constant("[SEP]")))
+
+checkpoint_path = os.path.join(config.DATA_DIR, 'realm_data/cc_news_pretrained/embedder/encoded/encoded.ckpt')
+with tf.device("/cpu:0"):
+    np_db = tf.train.load_checkpoint(checkpoint_path).get_tensor('block_emb')
+print(np_db.shape)
+print(np_db[0])
+
+# block_emb_file = os.path.join(config.DATA_DIR, 'tmp/blocks10.pkl')
+# block_embs = datautils.load_pickle_data(block_emb_file)
+# print(block_embs[0])
+# print(tokenizer.tokenize(tf.constant('HP LaserJet')))
+# print(tokenizer.tokenize(tf.constant('hp laserjet')))
+# v1 = tf.constant([[10, 12, 13] for _ in range(3)], tf.int32)
+# v1 = tf.constant([[10], [12], [13]], tf.int32)
+# v1 = tf.expand_dims(v1, 0)
+# print(v1)
+# v2 = tf.constant([[1, 2], [3, 4], [7, 1]], tf.int32)
+# print(tf.concat((v1, v2), 1))
+# exit()
+
+# origin_blocks_file = os.path.join(config.DATA_DIR, 'realm_data/realm_blocks/blocks.tfr')
+# output_tfr_file = os.path.join(config.DATA_DIR, 'tmp/blocks10.tfr')
+# blocks_dataset = tf.data.TFRecordDataset(
+#     origin_blocks_file, buffer_size=512 * 1024 * 1024)
+# # for i, sent in enumerate(blocks_dataset):
+# #     print(sent)
+# #     print(tokenizer.tokenize(sent))
+# #     if i > 1:
+# #         break
+# with tf.io.TFRecordWriter(output_tfr_file) as file_writer:
+#     for i, sent in enumerate(blocks_dataset):
+#         # print(sent)
+#         # sent = sent.numpy().decode('utf-8')
+#         # sent = 'HP LaserJet [SEP] ' + sent
+#         # file_writer.write(sent.encode('utf-8'))
+#         file_writer.write(sent.numpy())
+#         if i > 10:
+#             break
+#
+# print('**************')
+# blocks_dataset = tf.data.TFRecordDataset(
+#     output_tfr_file, buffer_size=512 * 1024 * 1024)
+# for i, sent in enumerate(blocks_dataset):
+#     print(sent)
+
 # tmp_blocks = tf.constant(['i you date', 'sh ij ko', 'day in day'])
 # answers = tf.constant(["date", 'day'])
 # result = orqa_ops.has_answer(blocks=tmp_blocks, answers=answers)
@@ -149,33 +190,3 @@ print(cnt)
 # retriever_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/embedder')
 # reader_module_path = os.path.join(data_dir, 'realm_data/cc_news_pretrained/bert')
 # num_block_records = 13353718
-#
-# # block_ids = [[8922907, 6052548, 10062955, 3353143, 1761062],
-# #              [4329926, 2385692, 3212458, 4258115, 4555483]]
-# #              [6885852, 11160934, 3541819, 11471241, 6999494],
-# #              [8884514, 4336603, 12356131, 5319352, 2385659]]
-# block_ids = [8922907, 6052548, 10062955, 3353143, 1761062]
-#
-# block_ids = tf.compat.v1.get_variable('block_ids', initializer=block_ids)
-# # print(block_ids)
-#
-# blocks_dataset = tf.data.TFRecordDataset(
-#     block_records_path, buffer_size=512 * 1024 * 1024)
-# blocks_dataset = blocks_dataset.batch(
-#     num_block_records, drop_remainder=True)
-# blocks = tf.compat.v1.get_variable(
-#     "blocks",
-#     initializer=tf.data.experimental.get_single_element(blocks_dataset))
-# # blocks = tf.get_variable(
-# #     "blocks",
-# #     initializer=tf.data.experimental.get_single_element(blocks_dataset))
-# # blocks = tf.constant(tf.data.experimental.get_single_element(blocks_dataset))
-# retrieved_blocks = tf.gather(blocks, block_ids)
-# # print(retrieved_blocks)
-#
-# tokenizer, vocab_lookup_table = bert_utils.get_tf_tokenizer(reader_module_path)
-# print('get tokenizer')
-#
-# (orig_tokens, block_token_map, block_token_ids, blocks) = (
-#     bert_utils.tokenize_with_original_mapping(blocks, tokenizer))
-# print(block_token_ids)
