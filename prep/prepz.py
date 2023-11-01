@@ -77,7 +77,7 @@ def check_sents():
     f.close()
 
 
-def filter_not_noun_sents():
+def filter_sents_with_pattern():
     output_types_file = os.path.join(config.DATA_DIR, 'ultrafine/res/enwiki-20151002-type-sents-s01-filter-types.txt')
     output_sents_file = os.path.join(config.DATA_DIR, 'ultrafine/res/enwiki-20151002-type-sents-s01-filter.txt')
     type_vocab_file = os.path.join(config.DATA_DIR, 'ultrafine/uf_data/ontology/types.txt')
